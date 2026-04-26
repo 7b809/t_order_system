@@ -11,6 +11,11 @@ from services.exit_service import exit_position
 from services.order_fetch_service import get_orders
 
 from config import Config
+from utils.message_parser import parse_message
+from config_file.index_map import INDEX_MAP
+from utils.option_selector_by_strike import get_option_contract_by_strike, adjust_strike
+
+
 
 app = Flask(__name__)
 
@@ -84,6 +89,128 @@ def handle_exception(e):
         "details": str(e)
     }), 500
 
+@app.route("/webhook/tradingview/<int:security_id>/", methods=["POST"])
+def tradingview_webhook(security_id):
+    try:
+        data = request.get_json()
+
+        if not data or "message" not in data:
+            return jsonify({"status": "error", "message": "message required"}), 400
+
+        raw_message = data["message"]
+
+        logger.info(f"[TV WEBHOOK] Raw → {raw_message}")
+
+        # ✅ Step 1: Parse message
+        parsed = parse_message(raw_message)
+
+        if "error" in parsed:
+            return jsonify({"status": "error", "message": parsed["error"]}), 400
+
+        # -----------------------------------
+        # 🎯 STRIKE SHIFT LOGIC (NEW)
+        # -----------------------------------
+        flag = parsed.get("flag", True)
+        original_strike = parsed.get("strike")
+        option_type = parsed.get("type")
+
+        adjusted_strike = adjust_strike(
+            base_strike=original_strike,
+            option_type=option_type,
+            shift_enabled=flag
+        )
+
+        logger.info(
+            f"[TV WEBHOOK] Strike Adjusted → {original_strike} → {adjusted_strike} | Flag={flag}"
+        )
+
+        # -----------------------------------
+        # 🎯 OPTION CONTRACT FETCH
+        # -----------------------------------
+        contract = get_option_contract_by_strike(
+            security_id=security_id,
+            option_type=option_type,
+            target_strike=adjusted_strike
+        )
+
+        logger.info(f"[TV WEBHOOK] CONTRACT → {contract}")
+        print("FINAL CONTRACT →", contract)
+
+        # ❌ If contract failed → stop
+        if not contract or "error" in contract:
+            logger.error(f"[TV WEBHOOK] CONTRACT ERROR → {contract}")
+            return jsonify({
+                "status": "error",
+                "message": "Contract fetch failed",
+                "details": contract
+            }), 400
+
+        # -----------------------------------
+        # ✅ Step 2: Map index
+        # -----------------------------------
+        if security_id not in INDEX_MAP:
+            return jsonify({"status": "error", "message": "Invalid security_id"}), 400
+
+        index_info = INDEX_MAP[security_id]
+
+        logger.info(f"[TV WEBHOOK] Parsed → {parsed}")
+        logger.info(f"[TV WEBHOOK] Index → {index_info['name']}")
+
+        # -----------------------------------
+        # ✅ Step 3: Build order payload
+        # -----------------------------------
+        order_payload = {
+            "security_id": contract["security_id"],  # ✅ option contract
+            "exchange_segment": index_info["exchange"],
+            "transaction_type": "BUY" if "buy" in option_type.lower() else "SELL",
+            "quantity": index_info["lot_size"],
+            "product_type": "INTRA",
+            "price": contract.get("price"),
+            "use_market": True,
+            # debug/meta
+            "event": parsed.get("event"),
+            "strike": adjusted_strike,   # 👈 important (adjusted)
+            "option_type": "CE" if "CE" in option_type else "PE",
+            "flag": flag
+        }
+
+        clean_payload = {
+            "security_id": order_payload["security_id"],
+            "exchange_segment": order_payload["exchange_segment"],
+            "transaction_type": order_payload["transaction_type"],
+            "quantity": order_payload["quantity"],
+            "product_type": order_payload["product_type"],
+            "price": order_payload["price"],
+            "use_market": order_payload["use_market"]
+        }
+
+
+
+        logger.info(f"[TV WEBHOOK] Order Payload → {order_payload}")
+
+        # -----------------------------------
+        # 🚫 SAFE MODE (no real order yet)
+        # -----------------------------------
+        response = place_order(
+            **clean_payload,
+            amo=parsed.get("amo", False)
+        )    
+
+        return jsonify({
+            "status": "success",
+            "parsed": parsed,
+            "adjusted_strike": adjusted_strike,
+            "contract": contract,
+            "order_payload": order_payload,
+            "order_response": response
+        })
+
+    except Exception as e:
+        logger.exception("Webhook Error")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 # -----------------------------------
 # PLACE ORDER

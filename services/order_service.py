@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, time
 from config import Config
 from .base_service import (
     get_dhan_client,
@@ -16,7 +16,8 @@ def place_order(
     quantity=1,
     product_type="MARGIN",
     price=None,
-    use_market=True
+    use_market=True,
+    amo=False   # 👈 NEW (from webhook)
 ):
     try:
         dhan = get_dhan_client()
@@ -38,13 +39,31 @@ def place_order(
         order_type = dhan.MARKET if use_market else dhan.LIMIT
 
         # -----------------------------------
-        # 🧪 AMO MODE
+        # 🕒 MARKET TIME CHECK
         # -----------------------------------
-        is_testing = Config.TESTING_FLAG
-        after_market_order = is_testing
+        now = datetime.now().time()
 
-        if is_testing:
-            logger.info("[TEST MODE] AMO ORDER")
+        market_start = time(9, 15)
+        market_end = time(15, 30)
+
+        is_market_hours = market_start <= now <= market_end
+
+        # -----------------------------------
+        # 🧪 AMO MODE (UPDATED LOGIC)
+        # -----------------------------------
+        # Priority:
+        # 1. Webhook flag (amo=True)
+        # 2. Outside market hours
+        # 3. Testing mode fallback
+
+        after_market_order = (
+            amo                     # 👈 from webhook
+            or not is_market_hours  # 👈 time-based
+            or Config.TESTING_FLAG  # 👈 fallback safety
+        )
+
+        if after_market_order:
+            logger.info("[AMO MODE] Order will be placed as AMO")
             log_print("[ORDER] AMO MODE ENABLED")
 
         logger.info(f"Placing order {security_id} {transaction_type}")
@@ -93,7 +112,7 @@ def place_order(
                 "product": resolved_product,
                 "order_type": "MARKET" if use_market else "LIMIT",
                 "exchange_segment": exchange_segment,
-                "status": order_status,  # ✅ IMPORTANT (for dashboard)
+                "status": order_status,
                 "amo": after_market_order,
                 "response": response,
                 "time": datetime.utcnow()
@@ -110,9 +129,6 @@ def place_order(
         logger.error(f"Order failed: {e}")
         log_print(f"[ORDER ERROR] {e}")
 
-        # -----------------------------------
-        # 💾 SAVE FAILURE LOG
-        # -----------------------------------
         try:
             save_log({
                 "type": "ORDER_FAILED",
