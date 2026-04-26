@@ -1,0 +1,2 @@
+chmod +x stop_app.sh
+chmod +x start_app.sh
