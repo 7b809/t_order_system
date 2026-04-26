@@ -6,7 +6,8 @@ __pycache__/
 
 wv
 downloads
-
+app.log
+app.pid
 
 # C extensions
 *.so
