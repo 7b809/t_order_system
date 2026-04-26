@@ -81,3 +81,28 @@ def resolve_product_type(exchange_segment, mode):
     log_print(f"[PRODUCT] {exchange_segment} → {result}")
 
     return result
+
+
+# -----------------------------------
+# GET LAST ORDER (FIXED VERSION)
+# -----------------------------------
+def get_last_order():
+    """
+    Get last ACTIVE order (non-AMO)
+    """
+    try:
+        from pymongo import DESCENDING
+
+        collection = Config.get_order_collection()
+
+        return collection.find_one(
+            {
+                "type": "ORDER",
+                "amo": False
+            },
+            sort=[("time", DESCENDING)]
+        )
+
+    except Exception as e:
+        logger.error(f"[GET LAST ORDER ERROR] {e}")
+        return None

@@ -5,8 +5,11 @@ from .base_service import (
     save_log,
     resolve_product_type,
     logger,
-    log_print
+    log_print,
+    get_last_order
 )
+from .exit_service import exit_position
+from utils.telegram_service import send_telegram_message   # ✅ NEW
 
 
 def place_order(
@@ -18,7 +21,7 @@ def place_order(
     price=None,
     use_market=True,
     amo=False,
-    meta=None   # 👈 ADDED
+    meta=None
 ):
     
     try:
@@ -51,7 +54,7 @@ def place_order(
         is_market_hours = market_start <= now <= market_end
 
         # -----------------------------------
-        # 🧪 AMO MODE (UPDATED LOGIC)
+        # 🧪 AMO MODE
         # -----------------------------------
         after_market_order = (
             amo
@@ -65,6 +68,71 @@ def place_order(
 
         logger.info(f"Placing order {security_id} {transaction_type}")
         log_print(f"[ORDER] Request → {security_id} {transaction_type}")
+
+        # -----------------------------------
+        # 🧠 PRE-CHECK: DIRECTION CONTROL
+        # -----------------------------------
+        try:
+            if not after_market_order and meta:
+                last_order = get_last_order()
+
+                if last_order:
+                    last_option = last_order.get("meta", {}).get("option_type")
+                    current_option = meta.get("option_type")
+
+                    # ❌ SAME → IGNORE
+                    if last_option == current_option:
+                        logger.info("[SKIP] Same direction trade ignored")
+                        log_print("[ORDER] Skipped duplicate direction")
+
+                        save_log({
+                            "type": "ORDER_IGNORED",
+                            "reason": "Same direction trade",
+                            "security_id": security_id,
+                            "txn": transaction_type,
+                            "qty": quantity,
+                            "exchange_segment": exchange_segment,
+                            "meta": meta,
+                            "time": datetime.utcnow()
+                        })
+
+                        # ✅ TELEGRAM IGNORED
+                        try:
+                            send_telegram_message(
+                                f"❌ <b>ORDER IGNORED</b>\n"
+                                f"Reason: Same Direction\n"
+                                f"Type: {current_option}\n"
+                                f"Strike: {meta.get('adjusted_strike')}"
+                            )
+                        except Exception:
+                            pass
+
+                        return {
+                            "status": "ignored",
+                            "reason": "Same direction trade"
+                        }
+
+                    # 🔁 OPPOSITE → EXIT FIRST
+                    else:
+                        logger.info("[REVERSAL] Opposite signal detected")
+                        log_print("[ORDER] Reversal triggered")
+
+                        # ✅ TELEGRAM REVERSAL
+                        try:
+                            send_telegram_message(
+                                f"🔁 <b>REVERSAL</b>\n"
+                                f"From: {last_option} → To: {current_option}"
+                            )
+                        except Exception:
+                            pass
+
+                        if last_order.get("status") in ["TRADED", "TRANSIT"]:
+                            exit_position(last_order)
+                        else:
+                            logger.info("[REVERSAL] Skipped exit due to inactive status")
+
+        except Exception as e:
+            logger.error(f"[CHECK ERROR] {e}")
 
         # -----------------------------------
         # 📦 PLACE ORDER
@@ -97,7 +165,7 @@ def place_order(
         log_print(f"[ORDER] Response → {order_status}")
 
         # -----------------------------------
-        # 💾 SAVE LOG (UPDATED WITH META)
+        # 💾 SAVE LOG (WITH META)
         # -----------------------------------
         try:
             log_data = {
@@ -115,7 +183,6 @@ def place_order(
                 "time": datetime.utcnow()
             }
 
-            # ✅ attach metadata (NO impact on existing logic)
             if meta:
                 log_data["meta"] = meta
 
@@ -124,6 +191,20 @@ def place_order(
         except Exception as log_err:
             logger.error(f"Save log failed: {log_err}")
             log_print(f"[ORDER LOG ERROR] {log_err}")
+
+        # -----------------------------------
+        # 📲 TELEGRAM SUCCESS
+        # -----------------------------------
+        try:
+            send_telegram_message(
+                f"✅ <b>ORDER PLACED</b>\n"
+                f"Type: {meta.get('option_type') if meta else '-'}\n"
+                f"Strike: {meta.get('adjusted_strike') if meta else '-'}\n"
+                f"Qty: {quantity}\n"
+                f"Status: {order_status}"
+            )
+        except Exception:
+            pass
 
         logger.info(f"Order success: {order_id} -> {order_status}")
 
@@ -140,6 +221,18 @@ def place_order(
                 "error": str(e),
                 "time": datetime.utcnow()
             })
+        except Exception:
+            pass
+
+        # -----------------------------------
+        # 📲 TELEGRAM FAILURE
+        # -----------------------------------
+        try:
+            send_telegram_message(
+                f"❌ <b>ORDER FAILED</b>\n"
+                f"Security: {security_id}\n"
+                f"Error: {str(e)}"
+            )
         except Exception:
             pass
 

@@ -6,25 +6,29 @@ from .base_service import (
     logger,
     log_print
 )
+from utils.telegram_service import send_telegram_message   # ✅ NEW
 
 
-def exit_position(
-    security_id,
-    exchange_segment="NSE_EQ",
-    quantity=1,
-    product_type="INTRA"
-):
+def exit_position(order):
     try:
         dhan = get_dhan_client()
 
-        # EXIT = SELL (current logic)
-        txn = dhan.SELL
+        security_id = order["security_id"]
+        exchange_segment = order["exchange_segment"]
+        quantity = order["qty"]
+        product_type = order["product"]
+        txn_type = order.get("txn", "BUY")
+
+        # -----------------------------------
+        # 🔁 REVERSE TRANSACTION
+        # -----------------------------------
+        txn = dhan.SELL if txn_type == "BUY" else dhan.BUY
 
         resolved_product = resolve_product_type(exchange_segment, product_type)
         product = getattr(dhan, resolved_product)
 
-        logger.info(f"Exit request for {security_id}")
-        log_print(f"[EXIT] Request → {security_id}")
+        logger.info(f"[EXIT] Reversing order {security_id}")
+        log_print(f"[EXIT] Reverse → {security_id}")
 
         # -----------------------------------
         # 📦 PLACE EXIT ORDER
@@ -36,7 +40,8 @@ def exit_position(
             quantity=int(quantity),
             order_type=dhan.MARKET,
             product_type=product,
-            price=0
+            price=0,
+            after_market_order=False
         )
 
         # -----------------------------------
@@ -59,16 +64,32 @@ def exit_position(
         # -----------------------------------
         save_log({
             "type": "EXIT",
-            "order_id": order_id,
+            "reason": "REVERSAL",
+            "linked_order": order.get("order_id"),
             "security_id": security_id,
             "qty": quantity,
             "product": resolved_product,
             "exchange_segment": exchange_segment,
-            "txn": "SELL",
+            "txn": "SELL" if txn == dhan.SELL else "BUY",
             "status": order_status,
             "response": response,
             "time": datetime.utcnow()
         })
+
+        # -----------------------------------
+        # 📲 TELEGRAM SUCCESS
+        # -----------------------------------
+        try:
+            send_telegram_message(
+                f"🔻 <b>EXIT ORDER</b>\n"
+                f"Reason: REVERSAL\n"
+                f"Security: {security_id}\n"
+                f"Qty: {quantity}\n"
+                f"Txn: {'SELL' if txn == dhan.SELL else 'BUY'}\n"
+                f"Status: {order_status}"
+            )
+        except Exception:
+            pass
 
         logger.info(f"Exit success: {security_id} -> {order_status}")
 
@@ -84,10 +105,22 @@ def exit_position(
         try:
             save_log({
                 "type": "EXIT_FAILED",
-                "security_id": security_id,
+                "security_id": order.get("security_id"),
                 "error": str(e),
                 "time": datetime.utcnow()
             })
+        except Exception:
+            pass
+
+        # -----------------------------------
+        # 📲 TELEGRAM FAILURE
+        # -----------------------------------
+        try:
+            send_telegram_message(
+                f"❌ <b>EXIT FAILED</b>\n"
+                f"Security: {order.get('security_id')}\n"
+                f"Error: {str(e)}"
+            )
         except Exception:
             pass
 
