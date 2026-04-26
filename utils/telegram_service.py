@@ -1,7 +1,6 @@
 import requests
 from config import Config
-from ..services.base_service import logger
-
+from services.base_service import logger
 
 def send_telegram_message(message: str):
     try:
