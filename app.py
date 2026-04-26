@@ -1,5 +1,6 @@
 import logging
 import sys
+import os
 
 from flask import Flask, request, jsonify, render_template
 
@@ -9,14 +10,21 @@ from services.cancel_service import cancel_order
 from services.exit_service import exit_position
 from services.order_fetch_service import get_orders
 
-app = Flask(__name__)
+from config import Config
 
-# Fix Windows encoding
-sys.stdout.reconfigure(encoding='utf-8')
+app = Flask(__name__)
 
 
 # -----------------------------------
-# LOGGER (SAFE INIT - NO DUPLICATES)
+# 🪵 OPTIONAL DEBUG PRINT
+# -----------------------------------
+def log_print(msg):
+    if Config.BASE_LOGS:
+        print(msg)
+
+
+# -----------------------------------
+# LOGGER (NO FILE HANDLER - SAFE)
 # -----------------------------------
 logger = logging.getLogger("dhan_api")
 
@@ -28,11 +36,7 @@ if not logger.handlers:
     console = logging.StreamHandler()
     console.setFormatter(formatter)
 
-    file = logging.FileHandler("dhan_api.log")
-    file.setFormatter(formatter)
-
     logger.addHandler(console)
-    logger.addHandler(file)
 
 
 # -----------------------------------
@@ -42,6 +46,7 @@ if not logger.handlers:
 def dashboard():
     try:
         orders = get_orders()
+        log_print(f"[DASHBOARD] Loaded {len(orders)} orders")
         return render_template("index.html", orders=orders)
     except Exception as e:
         logger.error(f"Dashboard error: {e}")
@@ -49,7 +54,7 @@ def dashboard():
 
 
 # -----------------------------------
-# FIX FAVICON (PREVENT 404 ERROR)
+# FIX FAVICON
 # -----------------------------------
 @app.route("/favicon.ico")
 def favicon():
@@ -57,7 +62,7 @@ def favicon():
 
 
 # -----------------------------------
-# HANDLE 404 SEPARATELY
+# HANDLE 404
 # -----------------------------------
 @app.errorhandler(404)
 def not_found(e):
@@ -68,7 +73,7 @@ def not_found(e):
 
 
 # -----------------------------------
-# GLOBAL ERROR HANDLER (ONLY REAL ERRORS)
+# GLOBAL ERROR HANDLER
 # -----------------------------------
 @app.errorhandler(Exception)
 def handle_exception(e):
@@ -95,6 +100,7 @@ def order():
             return jsonify({"status": "error", "message": "security_id required"}), 400
 
         logger.info(f"Order request: {data}")
+        log_print(f"[API] ORDER → {data}")
 
         response = place_order(
             security_id=data["security_id"],
@@ -113,6 +119,8 @@ def order():
 
     except Exception as e:
         logger.error(f"Order failed: {e}")
+        log_print(f"[API ERROR] ORDER → {e}")
+
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -128,6 +136,7 @@ def cancel():
             return jsonify({"status": "error", "message": "order_id required"}), 400
 
         logger.info(f"Cancel request: {data}")
+        log_print(f"[API] CANCEL → {data}")
 
         response = cancel_order(data["order_id"])
 
@@ -138,6 +147,8 @@ def cancel():
 
     except Exception as e:
         logger.error(f"Cancel failed: {e}")
+        log_print(f"[API ERROR] CANCEL → {e}")
+
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -153,6 +164,7 @@ def exit_trade():
             return jsonify({"status": "error", "message": "security_id required"}), 400
 
         logger.info(f"Exit request: {data}")
+        log_print(f"[API] EXIT → {data}")
 
         response = exit_position(
             security_id=data["security_id"],
@@ -168,6 +180,8 @@ def exit_trade():
 
     except Exception as e:
         logger.error(f"Exit failed: {e}")
+        log_print(f"[API ERROR] EXIT → {e}")
+
         return jsonify({"status": "error", "message": str(e)}), 500
 
 

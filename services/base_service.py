@@ -1,56 +1,60 @@
 import logging
 from datetime import datetime
-from pymongo import MongoClient
 
 from config import Config
 from get_keys import load_valid_dhan_credentials
 from dhanhq.dhanhq import dhanhq
 
 
-# LOGGER
+# -----------------------------------
+# SIMPLE LOGGER (NO FILE HANDLER)
+# -----------------------------------
 logger = logging.getLogger("dhan_service")
-logger.setLevel(logging.INFO)
 
-formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+if not logger.handlers:
+    logger.setLevel(logging.INFO)
 
-console = logging.StreamHandler()
-console.setFormatter(formatter)
+    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
 
-file = logging.FileHandler("dhan_service.log")
-file.setFormatter(formatter)
+    console = logging.StreamHandler()
+    console.setFormatter(formatter)
 
-logger.addHandler(console)
-logger.addHandler(file)
+    logger.addHandler(console)
 
 
-# MONGO
-try:
-    client = MongoClient(Config.MONGO_URI)
-    db = client[Config.DB_NAME]
-    orders_collection = db[Config.ORDER_COLLECTION]
-    logger.info("[INFO] MongoDB connected")
-except Exception as e:
-    logger.error(f"[ERROR] Mongo failed: {e}")
-    orders_collection = None
+# -----------------------------------
+# SAFE PRINT (CONTROLLED BY ENV)
+# -----------------------------------
+def log_print(message):
+    if Config.BASE_LOGS:
+        print(message)
 
 
-# SAVE LOG
+# -----------------------------------
+# SAVE LOG → MONGO (MAIN STORAGE)
+# -----------------------------------
 def save_log(data):
-    if orders_collection is None:
-        return
-
     try:
-        orders_collection.insert_one(data)
+        collection = Config.get_order_collection()
+        collection.insert_one(data)
+
+        log_print(f"[MONGO] Saved: {data.get('type')}")
+
     except Exception as e:
         logger.error(f"Mongo save error: {e}")
+        log_print(f"[MONGO ERROR] {e}")
 
 
+# -----------------------------------
 # DHAN CLIENT
+# -----------------------------------
 def get_dhan_client():
     creds = load_valid_dhan_credentials()
 
     if not creds:
         raise Exception("No valid token")
+
+    log_print("[DHAN] Client initialized")
 
     return dhanhq(
         creds["client_id"],
@@ -58,15 +62,22 @@ def get_dhan_client():
     )
 
 
-# PRODUCT TYPE
+# -----------------------------------
+# PRODUCT TYPE RESOLVER
+# -----------------------------------
 def resolve_product_type(exchange_segment, mode):
     exchange_segment = exchange_segment.upper()
     mode = (mode or "INTRADAY").upper()
 
     if exchange_segment in ["NSE_EQ", "BSE_EQ"]:
-        return "CNC" if mode == "DELIVERY" else "INTRA"
+        result = "CNC" if mode == "DELIVERY" else "INTRA"
 
     elif exchange_segment in ["NSE_FNO", "BSE_FNO"]:
-        return "MARGIN" if mode == "DELIVERY" else "INTRA"
+        result = "MARGIN" if mode == "DELIVERY" else "INTRA"
 
-    return "INTRA"
+    else:
+        result = "INTRA"
+
+    log_print(f"[PRODUCT] {exchange_segment} → {result}")
+
+    return result

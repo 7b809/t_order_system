@@ -1,5 +1,5 @@
 from datetime import datetime
-from .base_service import get_dhan_client, save_log, logger
+from .base_service import get_dhan_client, save_log, logger, log_print
 
 
 def cancel_order(order_id):
@@ -7,6 +7,7 @@ def cancel_order(order_id):
         dhan = get_dhan_client()
 
         logger.info(f"Cancel request for order_id: {order_id}")
+        log_print(f"[CANCEL] Request → {order_id}")
 
         # -----------------------------------
         # ❌ CANCEL ORDER
@@ -14,39 +15,51 @@ def cancel_order(order_id):
         response = dhan.cancel_order(order_id)
 
         # -----------------------------------
-        # 🔑 EXTRACT STATUS SAFELY
+        # 🔑 SAFE EXTRACT
         # -----------------------------------
         order_status = None
+        order_id_resp = None
+
         try:
-            order_status = response.get("data", {}).get("orderStatus")
+            data = response.get("data", {})
+            order_status = data.get("orderStatus")
+            order_id_resp = data.get("orderId")
         except Exception:
             pass
 
+        log_print(f"[CANCEL] Response → {order_status}")
+
         # -----------------------------------
-        # 💾 SAVE LOG (ENHANCED)
+        # 💾 SAVE LOG
         # -----------------------------------
         save_log({
             "type": "CANCEL",
-            "order_id": order_id,
-            "status": order_status,          # ✅ NEW (useful for dashboard)
-            "action": "CANCELLED",           # ✅ NEW (explicit action)
+            "order_id": order_id_resp or order_id,
+            "status": order_status,
+            "action": "CANCELLED",
             "response": response,
             "time": datetime.utcnow()
         })
 
-        logger.info(f"Cancel success: {order_id} → {order_status}")
+        logger.info(f"Cancel success: {order_id} -> {order_status}")
 
         return response
 
     except Exception as e:
         logger.error(f"Cancel failed: {e}")
+        log_print(f"[CANCEL ERROR] {e}")
 
-        # Optional: log failure also
-        save_log({
-            "type": "CANCEL_FAILED",
-            "order_id": order_id,
-            "error": str(e),
-            "time": datetime.utcnow()
-        })
+        # -----------------------------------
+        # 💾 SAVE FAILURE LOG
+        # -----------------------------------
+        try:
+            save_log({
+                "type": "CANCEL_FAILED",
+                "order_id": order_id,
+                "error": str(e),
+                "time": datetime.utcnow()
+            })
+        except Exception:
+            pass  # never break flow due to logging
 
         raise Exception(f"Cancel failed: {e}")

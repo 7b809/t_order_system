@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 from get_keys import load_valid_dhan_credentials
+from pymongo import MongoClient
 
 # 🔁 Load ENV
 load_dotenv()
@@ -14,19 +15,43 @@ class Config:
     MONGO_URI = os.getenv("MONGO_URI")
 
     # -----------------------------------
-    # 🗄️ DATABASE CONFIG (FROM ENV)
+    # 🗄️ DATABASE CONFIG
     # -----------------------------------
     DB_NAME = os.getenv("DB_NAME")
-    COLLECTION_NAME = os.getenv("COLLECTION_NAME")    
+    TOKEN_COLLECTION = os.getenv("COLLECTION_NAME", "access_tokens")
     ORDER_COLLECTION = os.getenv("ORDER_COLLECTION", "orders")
+
     TESTING_FLAG = os.getenv("TESTING_FLAG", "false").lower() == "true"
+    BASE_LOGS = os.getenv("BASE_LOGS", "false").lower() == "true"
     # -----------------------------------
     # ⚙️ INTERNAL CACHE
     # -----------------------------------
     _dhan_creds = None
+    _mongo_client = None
 
     # -----------------------------------
-    #  LOAD DHAN CREDS (FROM get_keys.py)
+    # 🗄️ MONGO CLIENT (SINGLETON)
+    # -----------------------------------
+    @classmethod
+    def get_db(cls):
+        if cls._mongo_client is None:
+            if not cls.MONGO_URI:
+                raise ValueError("MONGO_URI not found")
+
+            cls._mongo_client = MongoClient(cls.MONGO_URI)
+
+        return cls._mongo_client[cls.DB_NAME]
+
+    # -----------------------------------
+    # 📊 ORDER COLLECTION (MAIN LOG SYSTEM)
+    # -----------------------------------
+    @classmethod
+    def get_order_collection(cls):
+        db = cls.get_db()
+        return db[cls.ORDER_COLLECTION]
+
+    # -----------------------------------
+    # 🔐 LOAD DHAN CREDS
     # -----------------------------------
     @classmethod
     def load_dhan_creds(cls):
@@ -34,37 +59,21 @@ class Config:
             return cls._dhan_creds
 
         try:
-
             creds = load_valid_dhan_credentials()
 
             if not creds:
-                print(" No valid Dhan token found")
+                print("No valid Dhan token found")
                 return None
 
             cls._dhan_creds = creds
             return creds
 
         except Exception as e:
-            print(f" Config Load Error: {e}")
+            print(f"Config Load Error: {e}")
             return None
 
     # -----------------------------------
-    # 🎯 DIRECT ACCESS (BEST USAGE)
-    # -----------------------------------
-    @classmethod
-    def dhan(cls):
-        """
-        Returns full creds dict:
-        {
-            client_id,
-            access_token,
-            expiry
-        }
-        """
-        return cls.load_dhan_creds()
-
-    # -----------------------------------
-    # 🎯 INDIVIDUAL GETTERS
+    # 🎯 GETTERS
     # -----------------------------------
     @classmethod
     def get_access_token(cls):
@@ -82,7 +91,7 @@ class Config:
         return creds["expiry"] if creds else None
 
     # -----------------------------------
-    #  TOKEN VALID CHECK
+    # ✅ TOKEN VALID CHECK
     # -----------------------------------
     @classmethod
     def is_token_valid(cls):
