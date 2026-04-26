@@ -193,8 +193,18 @@ def tradingview_webhook(security_id):
         # -----------------------------------
         response = place_order(
             **clean_payload,
-            amo=parsed.get("amo", False)
-        )    
+            amo=parsed.get("amo", False),
+            meta={
+                "event": parsed.get("event"),
+                "original_strike": parsed.get("strike"),
+                "adjusted_strike": adjusted_strike,
+                "option_type": order_payload.get("option_type"),
+                "flag": parsed.get("flag"),
+                "amo": parsed.get("amo"),
+                "contract_price": contract.get("price"),
+                "expiry": contract.get("expiry")
+            }
+        ) 
 
         return jsonify({
             "status": "success",

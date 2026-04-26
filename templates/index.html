@@ -4,7 +4,6 @@
 <head>
     <title>Dhan Trading Dashboard</title>
 
-
 <!-- Bootstrap -->
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 
@@ -54,13 +53,11 @@
     }
 </style>
 
-
 </head>
 
 <body>
 
 <div class="container mt-4">
-
 
 <!-- HEADER -->
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -81,6 +78,14 @@
                 <th>Qty</th>
                 <th>Product</th>
                 <th>Order Type</th>
+
+                <!-- ✅ NEW META COLUMNS -->
+                <th>Strategy</th>
+                <th>Strike</th>
+                <th>Option</th>
+                <th>Premium</th>
+                <th>Flags</th>
+
                 <th>Status</th>
                 <th>Time</th>
             </tr>
@@ -145,6 +150,56 @@
                     {% endif %}
                 </td>
 
+                <!-- ✅ STRATEGY -->
+                <td>
+                    {{ order.meta.event if order.meta else "-" }}
+                </td>
+
+                <!-- ✅ STRIKE -->
+                <td>
+                    {% if order.meta %}
+                        {{ order.meta.original_strike }} → {{ order.meta.adjusted_strike }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+
+                <!-- ✅ OPTION -->
+                <td>
+                    {% if order.meta %}
+                        {% if order.meta.option_type == "CE" %}
+                            <span class="badge bg-success">CE</span>
+                        {% else %}
+                            <span class="badge bg-danger">PE</span>
+                        {% endif %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+
+                <!-- ✅ PREMIUM -->
+                <td>
+                    {% if order.meta %}
+                        ₹{{ order.meta.contract_price }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+
+                <!-- ✅ FLAGS -->
+                <td>
+                    {% if order.meta %}
+                        {% if order.meta.flag %}
+                            <span class="badge bg-success">SHIFT</span>
+                        {% endif %}
+                        {% if order.meta.amo %}
+                            <span class="badge bg-warning text-dark">AMO</span>
+                        {% endif %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+
                 <!-- STATUS -->
                 <td>
                     {% set status = order.status or (order.response.data.orderStatus if order.response else "-") %}
@@ -173,11 +228,9 @@
 
 </div>
 
-
 </div>
 
 <!-- AUTO REFRESH -->
-
 <script>
     setTimeout(() => {
         location.reload();

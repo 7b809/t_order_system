@@ -17,8 +17,10 @@ def place_order(
     product_type="MARGIN",
     price=None,
     use_market=True,
-    amo=False   # 👈 NEW (from webhook)
+    amo=False,
+    meta=None   # 👈 ADDED
 ):
+    
     try:
         dhan = get_dhan_client()
 
@@ -51,15 +53,10 @@ def place_order(
         # -----------------------------------
         # 🧪 AMO MODE (UPDATED LOGIC)
         # -----------------------------------
-        # Priority:
-        # 1. Webhook flag (amo=True)
-        # 2. Outside market hours
-        # 3. Testing mode fallback
-
         after_market_order = (
-            amo                     # 👈 from webhook
-            or not is_market_hours  # 👈 time-based
-            or Config.TESTING_FLAG  # 👈 fallback safety
+            amo
+            or not is_market_hours
+            or Config.TESTING_FLAG
         )
 
         if after_market_order:
@@ -100,10 +97,10 @@ def place_order(
         log_print(f"[ORDER] Response → {order_status}")
 
         # -----------------------------------
-        # 💾 SAVE LOG
+        # 💾 SAVE LOG (UPDATED WITH META)
         # -----------------------------------
         try:
-            save_log({
+            log_data = {
                 "type": "ORDER",
                 "order_id": order_id,
                 "security_id": security_id,
@@ -116,7 +113,14 @@ def place_order(
                 "amo": after_market_order,
                 "response": response,
                 "time": datetime.utcnow()
-            })
+            }
+
+            # ✅ attach metadata (NO impact on existing logic)
+            if meta:
+                log_data["meta"] = meta
+
+            save_log(log_data)
+
         except Exception as log_err:
             logger.error(f"Save log failed: {log_err}")
             log_print(f"[ORDER LOG ERROR] {log_err}")
