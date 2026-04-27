@@ -15,7 +15,7 @@ def log_line():
     if BASIC_LOGS:
         print("-" * 40)
 
-def adjust_strike(base_strike, option_type, shift_enabled, shift_points=1000):
+def adjust_strike(base_strike, option_type, shift_enabled, shift_points=0):
     if not shift_enabled:
         return base_strike
 
