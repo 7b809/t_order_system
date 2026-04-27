@@ -160,10 +160,6 @@ def place_order(
         # -----------------------------------
         # 📦 PLACE ORDER
         # -----------------------------------
-        logger.info("[STEP] Sending order to Dhan API")
-        # -----------------------------------
-        # 📦 PLACE ORDER (SAFE WRAP)
-        # -----------------------------------
         try:
             logger.info("[STEP] Sending order to Dhan API")
 
@@ -184,7 +180,6 @@ def place_order(
         except Exception as api_err:
             logger.error(f"[API ERROR] Dhan place_order failed: {api_err}")
 
-            # 💾 SAVE FAILURE LOG
             try:
                 save_log({
                     "type": "ORDER_API_FAILED",
@@ -195,10 +190,9 @@ def place_order(
                     "error": str(api_err),
                     "time": datetime.utcnow()
                 })
-            except Exception as log_err:
-                logger.error(f"[LOG ERROR] Failed to save API error: {log_err}")
+            except Exception:
+                pass
 
-            # 📲 TELEGRAM ALERT
             try:
                 send_telegram_message(
                     f"❌ <b>ORDER API FAILED</b>\n"
@@ -215,13 +209,49 @@ def place_order(
             }
 
         # -----------------------------------
-        # 🔑 SAFE EXTRACT
+        # 🔑 SAFE EXTRACT + REJECTION HANDLING
         # -----------------------------------
         order_id = None
         order_status = None
 
         try:
             data = response.get("data") if response else None
+
+            # 🚨 NEW: BROKER REJECTION
+            if data and data.get("errorCode"):
+                error_msg = data.get("errorMessage")
+
+                logger.error(f"[ORDER REJECTED] {error_msg}")
+
+                try:
+                    save_log({
+                        "type": "ORDER_REJECTED",
+                        "security_id": security_id,
+                        "txn": transaction_type,
+                        "qty": quantity,
+                        "exchange_segment": exchange_segment,
+                        "amo": after_market_order,
+                        "error": error_msg,
+                        "response": response,
+                        "time": datetime.utcnow()
+                    })
+                except Exception:
+                    pass
+
+                try:
+                    send_telegram_message(
+                        f"❌ <b>ORDER REJECTED</b>\n"
+                        f"Reason: {error_msg}\n"
+                        f"Security: {security_id}\n"
+                        f"Qty: {quantity}"
+                    )
+                except Exception:
+                    pass
+
+                return {
+                    "status": "rejected",
+                    "reason": error_msg
+                }
 
             if data:
                 order_id = data.get("orderId")
@@ -258,7 +288,7 @@ def place_order(
             logger.error(f"[SAVE ERROR] {e}")
 
         # -----------------------------------
-        # 📲 TELEGRAM
+        # 📲 TELEGRAM SUCCESS
         # -----------------------------------
         try:
             send_telegram_message(

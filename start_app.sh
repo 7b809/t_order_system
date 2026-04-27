@@ -47,6 +47,17 @@ if [ "$LOCAL" != "$REMOTE" ]; then
     echo "⚡ Updating code..."
     git reset --hard origin/$BRANCH
     git clean -fd
+
+    # -----------------------------------
+    # 📦 Install / Update dependencies
+    # -----------------------------------
+    if [ -f "requirements.txt" ]; then
+        echo "📦 Installing dependencies..."
+        pip3 install -r requirements.txt --no-cache-dir
+    else
+        echo "⚠️ requirements.txt not found, skipping dependency install"
+    fi
+
 else
     echo "✅ Already up to date"
 fi
