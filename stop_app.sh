@@ -1,35 +1,47 @@
 #!/bin/bash
 
+APP_NAME="app.py"
 PID_FILE="app.pid"
 
 echo "🛑 Stopping application..."
 
+STOPPED=false
+
 # -----------------------------------
-# 📌 Check if PID file exists
+# 📌 Stop using PID file
 # -----------------------------------
-if [ ! -f "$PID_FILE" ]; then
-    echo "❌ PID file not found. App may not be running."
-    exit 1
+if [ -f "$PID_FILE" ]; then
+    PID=$(cat $PID_FILE)
+
+    if ps -p $PID > /dev/null 2>&1; then
+        echo "🔪 Killing PID: $PID"
+        kill $PID
+        sleep 2
+        STOPPED=true
+    fi
+
+    rm -f $PID_FILE
 fi
 
-PID=$(cat $PID_FILE)
+# -----------------------------------
+# 🧹 Kill stray processes (IMPORTANT)
+# -----------------------------------
+EXTRA_PID=$(pgrep -f $APP_NAME)
 
-# -----------------------------------
-# 🔍 Check if process exists
-# -----------------------------------
-if ps -p $PID > /dev/null 2>&1; then
-    echo "🔪 Killing process with PID: $PID"
-    kill -9 $PID
+if [ ! -z "$EXTRA_PID" ]; then
+    echo "🧹 Killing stray processes: $EXTRA_PID"
+    kill -9 $EXTRA_PID
     sleep 1
+    STOPPED=true
+fi
 
-    # Double check
-    if ps -p $PID > /dev/null 2>&1; then
-        echo "❌ Failed to stop process"
-    else
-        echo "✅ App stopped successfully"
-        rm -f $PID_FILE
-    fi
+# -----------------------------------
+# 📊 Final status
+# -----------------------------------
+REMAINING=$(pgrep -f $APP_NAME)
+
+if [ -z "$REMAINING" ]; then
+    echo "✅ App fully stopped"
 else
-    echo "⚠️ No running process found for PID: $PID"
-    rm -f $PID_FILE
+    echo "❌ Some processes still running: $REMAINING"
 fi
