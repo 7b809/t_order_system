@@ -161,21 +161,58 @@ def place_order(
         # 📦 PLACE ORDER
         # -----------------------------------
         logger.info("[STEP] Sending order to Dhan API")
+        # -----------------------------------
+        # 📦 PLACE ORDER (SAFE WRAP)
+        # -----------------------------------
+        try:
+            logger.info("[STEP] Sending order to Dhan API")
 
-        response = dhan.place_order(
-            security_id=str(security_id),
-            exchange_segment=exchange_segment,
-            transaction_type=txn,
-            quantity=int(quantity),
-            order_type=order_type,
-            product_type=product,
-            price=price if price else 0,
-            after_market_order=after_market_order,
-            amo_time="OPEN"
-        )
+            response = dhan.place_order(
+                security_id=str(security_id),
+                exchange_segment=exchange_segment,
+                transaction_type=txn,
+                quantity=int(quantity),
+                order_type=order_type,
+                product_type=product,
+                price=price if price else 0,
+                after_market_order=after_market_order,
+                amo_time="OPEN"
+            )
 
-        # 🔥 DEBUG FULL RESPONSE
-        print("[DEBUG] Full response →", response)
+            logger.info(f"[DEBUG] Full response → {response}")
+
+        except Exception as api_err:
+            logger.error(f"[API ERROR] Dhan place_order failed: {api_err}")
+
+            # 💾 SAVE FAILURE LOG
+            try:
+                save_log({
+                    "type": "ORDER_API_FAILED",
+                    "security_id": security_id,
+                    "txn": transaction_type,
+                    "qty": quantity,
+                    "amo": after_market_order,
+                    "error": str(api_err),
+                    "time": datetime.utcnow()
+                })
+            except Exception as log_err:
+                logger.error(f"[LOG ERROR] Failed to save API error: {log_err}")
+
+            # 📲 TELEGRAM ALERT
+            try:
+                send_telegram_message(
+                    f"❌ <b>ORDER API FAILED</b>\n"
+                    f"Security: {security_id}\n"
+                    f"Error: {str(api_err)}"
+                )
+            except Exception:
+                pass
+
+            return {
+                "status": "error",
+                "message": "Broker API failed",
+                "details": str(api_err)
+            }
 
         # -----------------------------------
         # 🔑 SAFE EXTRACT
