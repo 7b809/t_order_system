@@ -371,6 +371,37 @@ def get_logs():
         }), 500
 
 # -----------------------------------
+# 📤 SEND LOGS TO TELEGRAM (MANUAL)
+# -----------------------------------
+@app.route("/sendlogs", methods=["GET"])
+def send_logs():
+    try:
+        log_file_path = os.path.join(os.getcwd(), LOG_FILE)
+
+        if not os.path.exists(log_file_path):
+            return jsonify({
+                "status": "error",
+                "message": "Log file not found"
+            }), 404
+
+        logger.info("[API] Sending logs to Telegram manually...")
+
+        # ✅ Send file
+        send_telegram_file(LOG_FILE)
+
+        return jsonify({
+            "status": "success",
+            "message": "Log file sent to Telegram"
+        })
+
+    except Exception as e:
+        logger.exception("Send logs failed")
+
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+# -----------------------------------
 # HEALTH CHECK
 # -----------------------------------
 @app.route("/health", methods=["GET"])
