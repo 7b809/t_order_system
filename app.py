@@ -321,6 +321,41 @@ def exit_trade():
 
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# -----------------------------------
+# 📄 VIEW LOG FILE
+# -----------------------------------
+@app.route("/logs", methods=["GET"])
+def get_logs():
+    try:
+        log_file_path = os.path.join(os.getcwd(), "app.log")
+
+        if not os.path.exists(log_file_path):
+            return jsonify({
+                "status": "error",
+                "message": "Log file not found"
+            }), 404
+
+        # Optional: limit size (last N lines)
+        lines = request.args.get("lines", default=200, type=int)
+
+        with open(log_file_path, "r", encoding="utf-8", errors="ignore") as f:
+            log_lines = f.readlines()
+
+        # Get last N lines
+        log_lines = log_lines[-lines:]
+
+        return jsonify({
+            "status": "success",
+            "total_lines": len(log_lines),
+            "logs": log_lines
+        })
+
+    except Exception as e:
+        logger.exception("Error reading logs")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 # -----------------------------------
 # HEALTH CHECK
