@@ -15,8 +15,10 @@ echo "📤 Sending logs to Telegram..."
 if [ -f "$LOG_FILE" ]; then
     python3 - <<EOF
 from utils.telegram_service import send_telegram_file
-send_telegram_file("app.log")
+send_telegram_file("app.log", caption="🚀 PRE-RESTART LOGS")
 EOF
+
+
 
     sleep 2
 else

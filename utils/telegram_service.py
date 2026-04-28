@@ -33,8 +33,7 @@ def send_telegram_message(message: str):
         logger.error(f"[TELEGRAM ERROR] {e}")
 
 
-
-def send_telegram_file(file_path: str):
+def send_telegram_file(file_path: str, caption: str = None):
     try:
         token = Config.TELEGRAM_BOT_TOKEN
         chat_id = Config.TELEGRAM_CHAT_ID
@@ -63,7 +62,7 @@ def send_telegram_file(file_path: str):
 
                 data = {
                     "chat_id": chat_id,
-                    "caption": f"📄 Log file: {new_name}"
+                    "caption": caption or f"📄 Log file: {new_name}"
                 }
 
                 requests.post(url, data=data, files=files, timeout=30)
@@ -90,7 +89,7 @@ def send_telegram_file(file_path: str):
 
                 data = {
                     "chat_id": chat_id,
-                    "caption": f"📄 Log chunk {part}: {part_name}"
+                    "caption": caption or f"📄 Log chunk {part}: {part_name}"
                 }
 
                 requests.post(url, data=data, files=files, timeout=60)
@@ -98,4 +97,4 @@ def send_telegram_file(file_path: str):
                 part += 1
 
     except Exception as e:
-        logger.error(f"[TELEGRAM FILE ERROR] {e}")        
+        logger.error(f"[TELEGRAM FILE ERROR] {e}")
