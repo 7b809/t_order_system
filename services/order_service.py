@@ -262,4 +262,4 @@ def place_order(
         except Exception:
             pass
 
-        raise
+        raise  
