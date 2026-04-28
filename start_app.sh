@@ -8,6 +8,23 @@ BRANCH="temp1"
 echo "🔄 Starting deployment..."
 
 # -----------------------------------
+# 📤 Send logs BEFORE stopping
+# -----------------------------------
+echo "📤 Sending logs to Telegram..."
+
+if [ -f "$LOG_FILE" ]; then
+    python3 - <<EOF
+from utils.telegram_service import send_telegram_file
+send_telegram_file("app.log")
+EOF
+
+    sleep 2
+else
+    echo "⚠️ No log file found to send"
+fi
+
+
+# -----------------------------------
 # 🛑 Stop everything safely
 # -----------------------------------
 echo "🛑 Stopping existing processes..."
@@ -32,6 +49,17 @@ if [ ! -z "$EXTRA_PID" ]; then
     kill -9 $EXTRA_PID
     sleep 1
 fi
+
+
+# -----------------------------------
+# 🗂 Rotate log AFTER sending
+# -----------------------------------
+if [ -f "$LOG_FILE" ]; then
+    TS=$(date +"%Y-%m-%d_%H-%M-%S")
+    mv $LOG_FILE logs_$TS.log
+    echo "🗂 Log rotated → logs_$TS.log"
+fi
+
 
 # -----------------------------------
 # 📥 Sync code (NO MERGE EVER)
@@ -62,6 +90,7 @@ else
     echo "✅ Already up to date"
 fi
 
+
 # -----------------------------------
 # 🚀 Start app (stable mode)
 # -----------------------------------
@@ -74,6 +103,7 @@ echo $NEW_PID > $PID_FILE
 
 sleep 2
 
+
 # -----------------------------------
 # 🔍 Verify start
 # -----------------------------------
@@ -81,11 +111,7 @@ if ps -p $NEW_PID > /dev/null 2>&1; then
     echo "✅ App started successfully"
     echo "📌 PID: $NEW_PID"
 
-    # -----------------------------------
-    # 🔐 Ensure scripts are executable
-    # -----------------------------------
     chmod +x start_app.sh stop_app.sh 2>/dev/null
-
     echo "🔧 Permissions updated for start/stop scripts"
 
 else
@@ -93,5 +119,6 @@ else
     tail -n 20 $LOG_FILE
     exit 1
 fi
+
 
 echo "[$(date)] Deploy completed with PID $NEW_PID" >> $LOG_FILE

@@ -1,4 +1,7 @@
 from datetime import datetime, time
+import pytz
+import traceback
+
 from config import Config
 from .base_service import (
     get_dhan_client,
@@ -10,6 +13,23 @@ from .base_service import (
 )
 from .exit_service import exit_position
 from utils.telegram_service import send_telegram_message
+
+
+# -----------------------------------
+# 🧠 HELPER: EXCEPTION DETAILS
+# -----------------------------------
+def get_exception_info(e):
+    tb = traceback.extract_tb(e.__traceback__)
+    last = tb[-1] if tb else None
+
+    return {
+        "message": str(e),
+        "type": type(e).__name__,
+        "file": last.filename if last else None,
+        "line": last.lineno if last else None,
+        "function": last.name if last else None,
+        "trace": traceback.format_exc()
+    }
 
 
 def place_order(
@@ -44,15 +64,27 @@ def place_order(
         order_type = dhan.MARKET if use_market else dhan.LIMIT
         logger.info(f"[STEP] Order type → {'MARKET' if use_market else 'LIMIT'} | price={price}")
 
-        now = datetime.now().time()
+        # -----------------------------------
+        # 🕒 IST TIME FIX (NO LOGIC CHANGE)
+        # -----------------------------------
+        ist = pytz.timezone("Asia/Kolkata")
+        now = datetime.now(ist).time()
+
         market_start = time(9, 15)
         market_end = time(15, 30)
 
         is_market_hours = market_start <= now <= market_end
-        logger.info(f"[STEP] Market hours → {is_market_hours} | current_time={now}")
+        logger.info(f"[STEP] Market hours (IST) → {is_market_hours} | current_time={now}")
 
         after_market_order = bool(amo)
         logger.info(f"[STEP] AMO flag (strict) → {after_market_order}")
+
+        # -----------------------------------
+        # 🔥 AUTO AMO (NO BREAK IN FLOW)
+        # -----------------------------------
+        if not is_market_hours and not after_market_order:
+            logger.warning("[AUTO AMO] Outside market → switching to AMO")
+            after_market_order = True
 
         if after_market_order:
             logger.info("[AMO MODE] Order will be placed as AMO")
@@ -60,23 +92,8 @@ def place_order(
         logger.info(f"[ORDER] Placing order {security_id} {transaction_type}")
 
         # -----------------------------------
-        # 🚫 BLOCK NON-AMO OUTSIDE MARKET
+        # ❌ OLD BLOCKING REMOVED (replaced by auto AMO)
         # -----------------------------------
-        if not after_market_order and not is_market_hours:
-            logger.warning("[BLOCKED] Outside market hours")
-
-            save_log({
-                "type": "ORDER_BLOCKED",
-                "security_id": security_id,
-                "txn": transaction_type,
-                "qty": quantity,
-                "exchange_segment": exchange_segment,
-                "amo": after_market_order,
-                "time": datetime.utcnow(),
-                "meta": meta or {}
-            })
-
-            return {"status": "blocked", "reason": "non market hours"}
 
         # -----------------------------------
         # 🧠 PRE-CHECK (UNCHANGED)
@@ -120,16 +137,17 @@ def place_order(
                 after_market_order=after_market_order,
                 amo_time="OPEN"
             )
-            
+
             logger.info(f"[DEBUG] Full response → {response}")
 
         except Exception as api_err:
-            logger.error(f"[API ERROR] {api_err}")
+            error_info = get_exception_info(api_err)
+            logger.error(f"[API ERROR] {error_info}")
 
             save_log({
                 "type": "ORDER_API_FAILED",
                 "security_id": security_id,
-                "error": str(api_err),
+                "error": error_info,
                 "time": datetime.utcnow(),
                 "meta": meta or {}
             })
@@ -148,7 +166,6 @@ def place_order(
 
             data = response.get("data", {})
 
-            # ✅ UNIVERSAL ERROR DETECTION
             error_msg = (
                 data.get("errorMessage")
                 or data.get("error_message")
@@ -185,17 +202,17 @@ def place_order(
 
                 return {"status": "rejected", "reason": error_msg}
 
-            # ✅ SUCCESS / UNKNOWN SAFE
             order_id = data.get("orderId") or response.get("orderId")
             order_status = data.get("orderStatus") or response.get("orderStatus")
 
         except Exception as parse_err:
-            logger.error(f"[PARSE ERROR] {parse_err}")
+            error_info = get_exception_info(parse_err)
+            logger.error(f"[PARSE ERROR] {error_info}")
 
             save_log({
                 "type": "ORDER_PARSE_ERROR",
                 "security_id": security_id,
-                "error": str(parse_err),
+                "error": error_info,
                 "response": response,
                 "time": datetime.utcnow(),
                 "meta": meta or {}
@@ -229,18 +246,19 @@ def place_order(
         return response
 
     except Exception as e:
-        logger.error(f"[FATAL] {e}")
+        error_info = get_exception_info(e)
+        logger.error(f"[FATAL] {error_info}")
 
         save_log({
             "type": "ORDER_FAILED",
             "security_id": security_id,
-            "error": str(e),
+            "error": error_info,
             "time": datetime.utcnow(),
             "meta": meta or {}
         })
 
         try:
-            send_telegram_message(f"❌ FATAL ERROR\n{e}")
+            send_telegram_message(f"❌ FATAL ERROR\n{error_info}")
         except Exception:
             pass
 

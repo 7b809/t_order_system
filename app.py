@@ -14,6 +14,10 @@ from config import Config
 from utils.message_parser import parse_message
 from config_file.index_map import INDEX_MAP
 from utils.option_selector_by_strike import get_option_contract_by_strike, adjust_strike
+import atexit
+from utils.telegram_service import send_telegram_file
+
+LOG_FILE = "app.log"
 
 
 
@@ -43,7 +47,16 @@ if not logger.handlers:
 
     logger.addHandler(console)
 
-
+# -----------------------------------
+# 🧾 EXIT LOG SENDER
+# -----------------------------------
+def send_logs_on_exit():
+    try:
+        logger.info("[EXIT] Sending logs to Telegram...")
+        send_telegram_file(LOG_FILE)
+    except Exception as e:
+        logger.error(f"[EXIT ERROR] {e}")
+        
 # -----------------------------------
 # DASHBOARD
 # -----------------------------------
