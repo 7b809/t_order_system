@@ -1,11 +1,28 @@
 #!/bin/bash
 
 APP_NAME="app.py"
+LOG_FILE="app.log"
 PID_FILE="app.pid"
 
 echo "🛑 Stopping application..."
 
 STOPPED=false
+
+# -----------------------------------
+# 📤 Send logs BEFORE stopping
+# -----------------------------------
+echo "📤 Sending logs to Telegram..."
+
+if [ -f "$LOG_FILE" ]; then
+    python3 - <<EOF
+from utils.telegram_service import send_telegram_file
+send_telegram_file("app.log", caption="🛑 Logs before STOP")
+EOF
+    sleep 2
+else
+    echo "⚠️ No log file found to send"
+fi
+
 
 # -----------------------------------
 # 📌 Stop using PID file
@@ -23,6 +40,7 @@ if [ -f "$PID_FILE" ]; then
     rm -f $PID_FILE
 fi
 
+
 # -----------------------------------
 # 🧹 Kill stray processes (IMPORTANT)
 # -----------------------------------
@@ -34,6 +52,7 @@ if [ ! -z "$EXTRA_PID" ]; then
     sleep 1
     STOPPED=true
 fi
+
 
 # -----------------------------------
 # 📊 Final status
