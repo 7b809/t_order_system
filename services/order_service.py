@@ -1,6 +1,7 @@
 from datetime import datetime, time
 import pytz
 import traceback
+import uuid   # ✅ NEW
 
 from config import Config
 from .base_service import (
@@ -71,9 +72,6 @@ def place_order(
             order_id = data.get("orderId")
             order_status = data.get("orderStatus")
 
-            logger.info(f"[PAPER RESULT] order_id={order_id}, status={order_status}")
-
-            # ✅ SAME DB
             save_log({
                 "type": "ORDER",
                 "order_id": order_id,
@@ -88,34 +86,23 @@ def place_order(
                 "mode": "paper"
             })
 
-            try:
-                send_telegram_message(
-                    f"🧪 PAPER ORDER\nID:{order_id}\nStatus:{order_status}"
-                )
-            except Exception:
-                pass
-
             return response
 
         # -----------------------------------
-        # 🚀 REAL ORDER FLOW (UNCHANGED)
+        # 🚀 REAL ORDER FLOW
         # -----------------------------------
 
         dhan = get_dhan_client()
-        logger.info("[STEP] Dhan client initialized")
 
         txn = dhan.BUY if transaction_type.upper() == "BUY" else dhan.SELL
-        logger.info(f"[STEP] Transaction mapped → {txn}")
 
         resolved_product = resolve_product_type(exchange_segment, product_type)
         product = getattr(dhan, resolved_product)
-        logger.info(f"[STEP] Product resolved → {resolved_product}")
 
         if price is not None:
             use_market = False
 
         order_type = dhan.MARKET if use_market else dhan.LIMIT
-        logger.info(f"[STEP] Order type → {'MARKET' if use_market else 'LIMIT'} | price={price}")
 
         # IST TIME
         ist = pytz.timezone("Asia/Kolkata")
@@ -125,15 +112,15 @@ def place_order(
         market_end = time(15, 30)
 
         is_market_hours = market_start <= now <= market_end
-        logger.info(f"[STEP] Market hours → {is_market_hours}")
 
         after_market_order = bool(amo)
 
         if not is_market_hours and not after_market_order:
-            logger.warning("[AUTO AMO] Switching to AMO")
             after_market_order = True
 
-        # PRE-CHECK
+        # -----------------------------------
+        # 🔍 PRE-CHECK (IGNORE LOGIC + ID)
+        # -----------------------------------
         try:
             if not after_market_order and meta:
                 last_order = get_last_order()
@@ -143,13 +130,30 @@ def place_order(
                     current_option = meta.get("option_type")
 
                     if last_option == current_option:
+
+                        # ✅ GENERATE IGNORE ORDER ID
+                        ignore_order_id = f"IGN-{int(datetime.utcnow().timestamp())}-{uuid.uuid4().hex[:6]}"
+
                         save_log({
                             "type": "ORDER_IGNORED",
+                            "order_id": ignore_order_id,
                             "security_id": security_id,
                             "meta": meta,
+                            "reason": "Same option type ignored",
                             "time": datetime.utcnow()
                         })
-                        return {"status": "ignored"}
+
+                        try:
+                            send_telegram_message(
+                                f"⚠️ ORDER IGNORED\nID:{ignore_order_id}\nType:{current_option}"
+                            )
+                        except Exception:
+                            pass
+
+                        return {
+                            "status": "ignored",
+                            "order_id": ignore_order_id
+                        }
 
                     else:
                         if last_order.get("status") in ["TRADED", "TRANSIT"]:
@@ -158,7 +162,9 @@ def place_order(
         except Exception as e:
             logger.error(f"[CHECK ERROR] {e}")
 
-        # REAL ORDER CALL
+        # -----------------------------------
+        # 🚀 REAL ORDER CALL
+        # -----------------------------------
         try:
             response = dhan.place_order(
                 security_id=str(security_id),
@@ -186,7 +192,9 @@ def place_order(
 
             return {"status": "error", "reason": str(api_err)}
 
-        # RESPONSE HANDLING
+        # -----------------------------------
+        # 📦 RESPONSE HANDLING
+        # -----------------------------------
         data = response.get("data", {})
 
         error_msg = (
