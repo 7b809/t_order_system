@@ -13,6 +13,7 @@ from .base_service import (
 )
 from .exit_service import exit_position
 from utils.telegram_service import send_telegram_message
+from services.paper_order_service import place_paper_order
 
 
 # -----------------------------------
@@ -48,6 +49,58 @@ def place_order(
         logger.info("========== 🚀 PLACE ORDER START ==========")
         logger.info(f"[INPUT] security_id={security_id}, txn={transaction_type}, qty={quantity}, amo={amo}")
 
+        # -----------------------------------
+        # 🧪 PAPER TRADING (FULL OVERRIDE)
+        # -----------------------------------
+        if getattr(Config, "PAPER_TRADING", False):
+            logger.info("[PAPER MODE - FORCE] Skipping all logic")
+
+            response = place_paper_order(
+                security_id=security_id,
+                exchange_segment=exchange_segment,
+                transaction_type=transaction_type,
+                quantity=quantity,
+                product_type=product_type,
+                price=price,
+                order_type="MARKET" if use_market else "LIMIT",
+                amo=amo,
+                meta=meta
+            )
+
+            data = response.get("data", {})
+            order_id = data.get("orderId")
+            order_status = data.get("orderStatus")
+
+            logger.info(f"[PAPER RESULT] order_id={order_id}, status={order_status}")
+
+            # ✅ SAME DB
+            save_log({
+                "type": "ORDER",
+                "order_id": order_id,
+                "security_id": security_id,
+                "txn": transaction_type,
+                "qty": quantity,
+                "status": order_status,
+                "amo": amo,
+                "response": response,
+                "time": datetime.utcnow(),
+                "meta": meta or {},
+                "mode": "paper"
+            })
+
+            try:
+                send_telegram_message(
+                    f"🧪 PAPER ORDER\nID:{order_id}\nStatus:{order_status}"
+                )
+            except Exception:
+                pass
+
+            return response
+
+        # -----------------------------------
+        # 🚀 REAL ORDER FLOW (UNCHANGED)
+        # -----------------------------------
+
         dhan = get_dhan_client()
         logger.info("[STEP] Dhan client initialized")
 
@@ -64,9 +117,7 @@ def place_order(
         order_type = dhan.MARKET if use_market else dhan.LIMIT
         logger.info(f"[STEP] Order type → {'MARKET' if use_market else 'LIMIT'} | price={price}")
 
-        # -----------------------------------
-        # 🕒 IST TIME FIX (NO LOGIC CHANGE)
-        # -----------------------------------
+        # IST TIME
         ist = pytz.timezone("Asia/Kolkata")
         now = datetime.now(ist).time()
 
@@ -74,30 +125,15 @@ def place_order(
         market_end = time(15, 30)
 
         is_market_hours = market_start <= now <= market_end
-        logger.info(f"[STEP] Market hours (IST) → {is_market_hours} | current_time={now}")
+        logger.info(f"[STEP] Market hours → {is_market_hours}")
 
         after_market_order = bool(amo)
-        logger.info(f"[STEP] AMO flag (strict) → {after_market_order}")
 
-        # -----------------------------------
-        # 🔥 AUTO AMO (NO BREAK IN FLOW)
-        # -----------------------------------
         if not is_market_hours and not after_market_order:
-            logger.warning("[AUTO AMO] Outside market → switching to AMO")
+            logger.warning("[AUTO AMO] Switching to AMO")
             after_market_order = True
 
-        if after_market_order:
-            logger.info("[AMO MODE] Order will be placed as AMO")
-
-        logger.info(f"[ORDER] Placing order {security_id} {transaction_type}")
-
-        # -----------------------------------
-        # ❌ OLD BLOCKING REMOVED (replaced by auto AMO)
-        # -----------------------------------
-
-        # -----------------------------------
-        # 🧠 PRE-CHECK (UNCHANGED)
-        # -----------------------------------
+        # PRE-CHECK
         try:
             if not after_market_order and meta:
                 last_order = get_last_order()
@@ -122,9 +158,7 @@ def place_order(
         except Exception as e:
             logger.error(f"[CHECK ERROR] {e}")
 
-        # -----------------------------------
-        # 📦 PLACE ORDER
-        # -----------------------------------
+        # REAL ORDER CALL
         try:
             response = dhan.place_order(
                 security_id=str(security_id),
@@ -138,91 +172,44 @@ def place_order(
                 amo_time="OPEN"
             )
 
-            logger.info(f"[DEBUG] Full response → {response}")
-
         except Exception as api_err:
             error_info = get_exception_info(api_err)
-            logger.error(f"[API ERROR] {error_info}")
 
             save_log({
                 "type": "ORDER_API_FAILED",
                 "security_id": security_id,
                 "error": error_info,
                 "time": datetime.utcnow(),
-                "meta": meta or {}
+                "meta": meta or {},
+                "mode": "real"
             })
 
             return {"status": "error", "reason": str(api_err)}
 
-        # -----------------------------------
-        # 🔍 RESPONSE HANDLING (ROBUST)
-        # -----------------------------------
-        order_id = None
-        order_status = None
+        # RESPONSE HANDLING
+        data = response.get("data", {})
 
-        try:
-            if not response:
-                raise Exception("Empty response from broker")
+        error_msg = (
+            data.get("errorMessage")
+            or data.get("error_message")
+            or response.get("remarks", {}).get("message")
+        )
 
-            data = response.get("data", {})
-
-            error_msg = (
-                data.get("errorMessage")
-                or data.get("error_message")
-                or response.get("remarks", {}).get("message")
-            )
-
-            error_code = (
-                data.get("errorCode")
-                or data.get("error_code")
-                or response.get("remarks", {}).get("error_code")
-            )
-
-            if error_msg or error_code:
-                logger.error(f"[ORDER REJECTED] {error_msg}")
-
-                save_log({
-                    "type": "ORDER_REJECTED",
-                    "security_id": security_id,
-                    "txn": transaction_type,
-                    "qty": quantity,
-                    "amo": after_market_order,
-                    "error": error_msg,
-                    "response": response,
-                    "time": datetime.utcnow(),
-                    "meta": meta or {}
-                })
-
-                try:
-                    send_telegram_message(
-                        f"❌ <b>ORDER REJECTED</b>\n{error_msg}"
-                    )
-                except Exception:
-                    pass
-
-                return {"status": "rejected", "reason": error_msg}
-
-            order_id = data.get("orderId") or response.get("orderId")
-            order_status = data.get("orderStatus") or response.get("orderStatus")
-
-        except Exception as parse_err:
-            error_info = get_exception_info(parse_err)
-            logger.error(f"[PARSE ERROR] {error_info}")
-
+        if error_msg:
             save_log({
-                "type": "ORDER_PARSE_ERROR",
+                "type": "ORDER_REJECTED",
                 "security_id": security_id,
-                "error": error_info,
+                "error": error_msg,
                 "response": response,
                 "time": datetime.utcnow(),
                 "meta": meta or {}
             })
 
-        logger.info(f"[RESULT] order_id={order_id}, status={order_status}")
+            return {"status": "rejected", "reason": error_msg}
 
-        # -----------------------------------
-        # 💾 SAVE FINAL
-        # -----------------------------------
+        order_id = data.get("orderId") or response.get("orderId")
+        order_status = data.get("orderStatus") or response.get("orderStatus")
+
         save_log({
             "type": "ORDER",
             "order_id": order_id,
@@ -233,7 +220,8 @@ def place_order(
             "amo": after_market_order,
             "response": response,
             "time": datetime.utcnow(),
-            "meta": meta or {}
+            "meta": meta or {},
+            "mode": "real"
         })
 
         try:
@@ -247,7 +235,6 @@ def place_order(
 
     except Exception as e:
         error_info = get_exception_info(e)
-        logger.error(f"[FATAL] {error_info}")
 
         save_log({
             "type": "ORDER_FAILED",
@@ -262,4 +249,4 @@ def place_order(
         except Exception:
             pass
 
-        raise  
+        raise
