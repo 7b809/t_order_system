@@ -56,11 +56,23 @@ def process_order(raw_message):
 
         logger.info(f"Order stored: {order_id} | Status: {order_doc['status']}")
 
-        # STEP 6
-        if order_doc["status"] == "PLACED":
-            failed_step = "telegram_send"
-            send_telegram_alert(order_doc)
-            logger.info(f"Telegram sent for {order_id}")
+        # ✅ SEND TELEGRAM FOR ALL CASES
+        try:
+            send_telegram_alert({
+                "order_id": order_doc["order_id"],
+                "status": order_doc["status"],  # PLACED / IGNORED
+                "trade_type": order_doc["trade_type"],
+                "symbol": order_doc["symbol"],
+                "strike": order_doc["strike"],
+                "strike_price": order_doc["strike_price"],
+                "alert_price": order_doc["alert_price"],
+                "created_at": order_doc["created_at"]
+            })
+
+            logger.info(f"Telegram sent for {order_id} ({order_doc['status']})")
+
+        except Exception as tg_err:
+            logger.error(f"Telegram error: {tg_err}")
 
     except Exception as e:
         logger.error(f"Error at step [{failed_step}] → {str(e)}", exc_info=True)
@@ -80,6 +92,7 @@ def process_order(raw_message):
             orders_collection.insert_one(failed_order)
             logger.warning(f"FAILED order stored: {failed_order['order_id']}")
 
+            # 🔴 TELEGRAM FOR FAILED
             try:
                 send_telegram_alert({
                     "order_id": failed_order["order_id"],
@@ -90,8 +103,12 @@ def process_order(raw_message):
                     "strike_price": "NA",
                     "alert_price": metadata.get("Price", "NA"),
                     "created_at": failed_order["created_at"],
-                    "error": failed_order["error_reason"]
+                    "error": failed_order["error_reason"],
+                    "failed_step": failed_order["failed_step"]
                 })
+
+                logger.info(f"Telegram sent for FAILED {failed_order['order_id']}")
+
             except Exception as tg_err:
                 logger.error(f"Telegram FAIL alert error: {tg_err}")
 
