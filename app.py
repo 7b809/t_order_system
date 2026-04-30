@@ -1,66 +1,50 @@
 from flask import Flask, request, jsonify, render_template
-from db import orders_collection
-from order_logic import parse_message, generate_order_id, current_ist_time, should_ignore
 from config import Config
-from telegram_utils import send_telegram_alert
-import traceback
+import threading
+from utils import process_order
+from db import orders_collection
+from logger import get_logger
+import os
 
+logger = get_logger("flask_app")
 
 app = Flask(__name__)
 
+LOG_FILE = "logs/app.log"
+
+
+# --------------------------------------------------
+# 🚀 WEBHOOK
+# --------------------------------------------------
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
         data = request.get_json(silent=True)
-        if not data:
-            return jsonify({"error": "Invalid JSON"}), 400
 
-        raw_message = data.get("message")
-        if not raw_message:
-            return jsonify({"error": "Missing message"}), 400
+        if not data or "message" not in data:
+            logger.warning("Invalid payload received")
+            return jsonify({"error": "Invalid payload"}), 400
 
-        metadata = parse_message(raw_message)
-        trade_type = metadata.get("Type")
+        raw_message = data["message"]
 
-        if not trade_type:
-            return jsonify({"error": "Type missing"}), 400
+        logger.info(f"Webhook received: {raw_message}")
 
-        last_order = orders_collection.find_one(
-            {"status": "PLACED"},
-            sort=[("created_at", -1)]
-        )
+        threading.Thread(
+            target=process_order,
+            args=(raw_message,),
+            daemon=True
+        ).start()
 
-        ignored = should_ignore(last_order, trade_type)
-        order_id = generate_order_id("IG" if ignored else "ORD")
-
-        order_doc = {
-            "order_id": order_id,
-            "status": "IGNORED" if ignored else "PLACED",
-            "trade_type": trade_type,
-            "strike": metadata.get("Strike"),
-            "strike_price": metadata.get("StrikeLivePrice"),
-            "symbol": metadata.get("Symbol"),
-            "alert_price": metadata.get("Price"),
-            "created_at": current_ist_time(),
-            "metadata": metadata
-        }
-
-        orders_collection.insert_one(order_doc)
-
-        # 🔔 Telegram notify only for PLACED
-        if order_doc["status"] == "PLACED":
-            try:
-                send_telegram_alert(order_doc)
-            except Exception as tg_err:
-                print("Telegram error:", tg_err)
-
-        safe_doc = {k: str(v) if k == "_id" else v for k, v in order_doc.items()}
-        return jsonify({"status": "success", "data": safe_doc}), 200
+        return jsonify({"status": "accepted"}), 200
 
     except Exception as e:
-        print("ERROR:", traceback.format_exc())
+        logger.error(f"Webhook error: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
-    
+
+
+# --------------------------------------------------
+# 📊 ORDERS API
+# --------------------------------------------------
 @app.route("/api/orders", methods=["GET"])
 def get_orders():
     try:
@@ -70,8 +54,8 @@ def get_orders():
         skip = (page - 1) * limit
 
         cursor = orders_collection.find().sort("created_at", -1).skip(skip).limit(limit)
-        orders = []
 
+        orders = []
         for o in cursor:
             o["_id"] = str(o["_id"])
             orders.append(o)
@@ -86,11 +70,52 @@ def get_orders():
         })
 
     except Exception as e:
+        logger.error(f"/api/orders error: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
-    
+
+
+# --------------------------------------------------
+# 📄 LOGS API
+# --------------------------------------------------
+@app.route("/logs", methods=["GET"])
+def get_logs():
+    try:
+        page = int(request.args.get("page", 1))
+        limit = int(request.args.get("limit", 50))
+
+        if not os.path.exists(LOG_FILE):
+            return jsonify({"error": "Log file not found"}), 404
+
+        with open(LOG_FILE, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        lines.reverse()
+
+        start = (page - 1) * limit
+        end = start + limit
+
+        return jsonify({
+            "page": page,
+            "limit": limit,
+            "total": len(lines),
+            "data": lines[start:end]
+        })
+
+    except Exception as e:
+        logger.error(f"/logs error: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+# --------------------------------------------------
+# 🖥 DASHBOARD
+# --------------------------------------------------
 @app.route("/")
 def index():
-    return render_template("index.html")    
+    return render_template("index.html")
 
-if __name__=='__main__':
+
+# --------------------------------------------------
+# RUN
+# --------------------------------------------------
+if __name__ == "__main__":
     app.run(port=Config.FLASK_PORT, debug=True)
