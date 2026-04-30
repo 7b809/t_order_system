@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <!-- Mobile Responsive -->
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>{% block title %}Trading Dashboard{% endblock %}</title>
+
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+
+    <!-- Custom Styles -->
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #e2e8f0;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        /* Navbar */
+        .navbar {
+            background-color: #020617;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .navbar-brand {
+            font-weight: 600;
+            color: #38bdf8 !important;
+        }
+
+        .navbar-toggler {
+            border: none;
+        }
+
+        /* Cards */
+        .card {
+            background-color: #1e293b;
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        /* Table */
+        .table {
+            color: #e2e8f0;
+        }
+
+        .table thead {
+            background-color: #020617;
+        }
+
+        .table-hover tbody tr:hover {
+            background-color: #1e293b;
+        }
+
+        /* Badges */
+        .badge {
+            font-size: 0.8rem;
+            padding: 6px 10px;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            height: 6px;
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 10px;
+        }
+
+        /* Footer */
+        footer {
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+
+        /* Container control (better large screen UX) */
+        .main-container {
+            max-width: 1400px;
+            margin: auto;
+        }
+    </style>
+
+    {% block extra_css %}{% endblock %}
+</head>
+
+<body>
+
+<!-- 🔷 NAVBAR -->
+<nav class="navbar navbar-expand-lg sticky-top">
+    <div class="container-fluid px-3 px-md-4">
+
+        <a class="navbar-brand" href="/">📊 Trading Dashboard</a>
+
+        <!-- Mobile Toggle -->
+        <button class="navbar-toggler text-white" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
+            <i class="bi bi-list"></i>
+        </button>
+
+        <!-- Collapsible Menu -->
+        <div class="collapse navbar-collapse justify-content-end" id="navMenu">
+
+            <div class="d-flex flex-column flex-lg-row align-items-lg-center gap-2 gap-lg-3 mt-3 mt-lg-0">
+
+                <span class="badge bg-success px-3 py-2">LIVE</span>
+
+                <span class="text-muted small">
+                    <i class="bi bi-clock"></i> IST
+                </span>
+
+            </div>
+
+        </div>
+    </div>
+</nav>
+
+<!-- 🔷 MAIN CONTENT -->
+<main class="container-fluid py-4">
+    <div class="main-container px-2 px-md-3">
+        {% block content %}{% endblock %}
+    </div>
+</main>
+
+<!-- 🔷 FOOTER -->
+<footer class="text-center py-3">
+    <div>© 2026 Trading System • Built with Flask</div>
+</footer>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+{% block extra_js %}{% endblock %}
+
+</body>
+</html>

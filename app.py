@@ -1,201 +1,95 @@
-import logging
-import sys
-import os
-
 from flask import Flask, request, jsonify, render_template
-
-# SERVICES
-from services.order_service import place_order
-from services.cancel_service import cancel_order
-from services.exit_service import exit_position
-from services.order_fetch_service import get_orders
-
+from db import orders_collection
+from order_logic import parse_message, generate_order_id, current_ist_time, should_ignore
 from config import Config
+from telegram_utils import send_telegram_alert
+import traceback
+
 
 app = Flask(__name__)
 
-
-# -----------------------------------
-# 🪵 OPTIONAL DEBUG PRINT
-# -----------------------------------
-def log_print(msg):
-    if Config.BASE_LOGS:
-        print(msg)
-
-
-# -----------------------------------
-# LOGGER (NO FILE HANDLER - SAFE)
-# -----------------------------------
-logger = logging.getLogger("dhan_api")
-
-if not logger.handlers:
-    logger.setLevel(logging.INFO)
-
-    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
-
-    console = logging.StreamHandler()
-    console.setFormatter(formatter)
-
-    logger.addHandler(console)
-
-
-# -----------------------------------
-# DASHBOARD
-# -----------------------------------
-@app.route("/")
-def dashboard():
+@app.route("/webhook", methods=["POST"])
+def webhook():
     try:
-        orders = get_orders()
-        log_print(f"[DASHBOARD] Loaded {len(orders)} orders")
-        return render_template("index.html", orders=orders)
-    except Exception as e:
-        logger.error(f"Dashboard error: {e}")
-        return f"Error loading dashboard: {e}"
-
-
-# -----------------------------------
-# FIX FAVICON
-# -----------------------------------
-@app.route("/favicon.ico")
-def favicon():
-    return "", 204
-
-
-# -----------------------------------
-# HANDLE 404
-# -----------------------------------
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({
-        "status": "error",
-        "message": "Route not found"
-    }), 404
-
-
-# -----------------------------------
-# GLOBAL ERROR HANDLER
-# -----------------------------------
-@app.errorhandler(Exception)
-def handle_exception(e):
-    logger.exception("Unhandled Exception")
-    return jsonify({
-        "status": "error",
-        "message": "Internal Server Error",
-        "details": str(e)
-    }), 500
-
-
-# -----------------------------------
-# PLACE ORDER
-# -----------------------------------
-@app.route("/order", methods=["POST"])
-def order():
-    try:
-        data = request.get_json()
-
+        data = request.get_json(silent=True)
         if not data:
-            return jsonify({"status": "error", "message": "Invalid JSON"}), 400
+            return jsonify({"error": "Invalid JSON"}), 400
 
-        if "security_id" not in data:
-            return jsonify({"status": "error", "message": "security_id required"}), 400
+        raw_message = data.get("message")
+        if not raw_message:
+            return jsonify({"error": "Missing message"}), 400
 
-        logger.info(f"Order request: {data}")
-        log_print(f"[API] ORDER → {data}")
+        metadata = parse_message(raw_message)
+        trade_type = metadata.get("Type")
 
-        response = place_order(
-            security_id=data["security_id"],
-            exchange_segment=data.get("exchange_segment", "NSE_EQ"),
-            transaction_type=data.get("transaction_type", "BUY"),
-            quantity=data.get("quantity", 1),
-            product_type=data.get("product_type", "INTRA"),
-            price=data.get("price"),
-            use_market=data.get("market", True)
+        if not trade_type:
+            return jsonify({"error": "Type missing"}), 400
+
+        last_order = orders_collection.find_one(
+            {"status": "PLACED"},
+            sort=[("created_at", -1)]
         )
 
-        return jsonify({
-            "status": "success",
-            "data": response
-        })
+        ignored = should_ignore(last_order, trade_type)
+        order_id = generate_order_id("IG" if ignored else "ORD")
+
+        order_doc = {
+            "order_id": order_id,
+            "status": "IGNORED" if ignored else "PLACED",
+            "trade_type": trade_type,
+            "strike": metadata.get("Strike"),
+            "strike_price": metadata.get("StrikeLivePrice"),
+            "symbol": metadata.get("Symbol"),
+            "alert_price": metadata.get("Price"),
+            "created_at": current_ist_time(),
+            "metadata": metadata
+        }
+
+        orders_collection.insert_one(order_doc)
+
+        # 🔔 Telegram notify only for PLACED
+        if order_doc["status"] == "PLACED":
+            try:
+                send_telegram_alert(order_doc)
+            except Exception as tg_err:
+                print("Telegram error:", tg_err)
+
+        return jsonify({"status": "success", "data": order_doc}), 200
 
     except Exception as e:
-        logger.error(f"Order failed: {e}")
-        log_print(f"[API ERROR] ORDER → {e}")
-
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-# -----------------------------------
-# CANCEL ORDER
-# -----------------------------------
-@app.route("/cancel", methods=["POST"])
-def cancel():
+        print("ERROR:", traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
+    
+@app.route("/api/orders", methods=["GET"])
+def get_orders():
     try:
-        data = request.get_json()
+        page = int(request.args.get("page", 1))
+        limit = int(request.args.get("limit", 10))
 
-        if not data or "order_id" not in data:
-            return jsonify({"status": "error", "message": "order_id required"}), 400
+        skip = (page - 1) * limit
 
-        logger.info(f"Cancel request: {data}")
-        log_print(f"[API] CANCEL → {data}")
+        cursor = orders_collection.find().sort("created_at", -1).skip(skip).limit(limit)
+        orders = []
 
-        response = cancel_order(data["order_id"])
+        for o in cursor:
+            o["_id"] = str(o["_id"])
+            orders.append(o)
+
+        total = orders_collection.count_documents({})
 
         return jsonify({
-            "status": "success",
-            "data": response
+            "page": page,
+            "limit": limit,
+            "total": total,
+            "data": orders
         })
 
     except Exception as e:
-        logger.error(f"Cancel failed: {e}")
-        log_print(f"[API ERROR] CANCEL → {e}")
+        return jsonify({"error": str(e)}), 500
+    
+@app.route("/")
+def index():
+    return render_template("index.html")    
 
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-# -----------------------------------
-# EXIT POSITION
-# -----------------------------------
-@app.route("/exit", methods=["POST"])
-def exit_trade():
-    try:
-        data = request.get_json()
-
-        if not data or "security_id" not in data:
-            return jsonify({"status": "error", "message": "security_id required"}), 400
-
-        logger.info(f"Exit request: {data}")
-        log_print(f"[API] EXIT → {data}")
-
-        response = exit_position(
-            security_id=data["security_id"],
-            exchange_segment=data.get("exchange_segment", "NSE_EQ"),
-            quantity=data.get("quantity", 1),
-            product_type=data.get("product_type", "INTRA")
-        )
-
-        return jsonify({
-            "status": "success",
-            "data": response
-        })
-
-    except Exception as e:
-        logger.error(f"Exit failed: {e}")
-        log_print(f"[API ERROR] EXIT → {e}")
-
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-# -----------------------------------
-# HEALTH CHECK
-# -----------------------------------
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({"status": "ok"})
-
-
-# -----------------------------------
-# RUN
-# -----------------------------------
-if __name__ == "__main__":
-    logger.info("[INFO] Starting API")
-    app.run(debug=True, port=5000)
+if __name__=='__main__':
+    app.run(port=Config.FLASK_PORT, debug=True)
