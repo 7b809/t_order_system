@@ -54,7 +54,8 @@ def webhook():
             except Exception as tg_err:
                 print("Telegram error:", tg_err)
 
-        return jsonify({"status": "success", "data": order_doc}), 200
+        safe_doc = {k: str(v) if k == "_id" else v for k, v in order_doc.items()}
+        return jsonify({"status": "success", "data": safe_doc}), 200
 
     except Exception as e:
         print("ERROR:", traceback.format_exc())
