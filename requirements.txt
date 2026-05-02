@@ -1,0 +1,7 @@
+Django
+gunicorn
+pymongo
+python-dotenv
+requests
+pytz
+dhanhq

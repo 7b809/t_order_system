@@ -22,6 +22,6 @@ urlpatterns = [
     path("webhook/", include("webhook.urls")),
     path("api/", include("orders.urls")),
     path("", include("dashboard.urls")),
-    path("", include("core.urls")),   # logs
-    
+    path("core/", include("core.urls")),
+    path("broker/", include("broker.urls")),
 ]

@@ -28,8 +28,12 @@ SECRET_KEY = 'django-insecure-cg=wsp_tw_&ewlr)1@9(+f2*q44^q2^egn%^2n&d(@084uf#^^
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
 
+ALLOWED_HOSTS = ["*"]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://sr-webhook.up.railway.app"
+]
 
 
 MONGO_URI = os.getenv('MONGO_URI')
@@ -38,7 +42,8 @@ MONGO_COLLECTION = os.getenv('MONGO_COLLECTION')
 FLASK_PORT = int(os.getenv('FLASK_PORT', 5000))
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
+AUTH_MONGO_DB = os.getenv('AUTH_MONGO_DB')
+AUTH_MONGO_COLLECTION = os.getenv('AUTH_MONGO_COLLECTION')
 # Application definition
 
 INSTALLED_APPS = [

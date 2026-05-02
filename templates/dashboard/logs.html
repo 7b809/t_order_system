@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live Logs</title>
+    <style>
+        body {
+            background: #0f172a;
+            color: #e2e8f0;
+            font-family: monospace;
+            padding: 20px;
+        }
+
+        h2 {
+            color: #38bdf8;
+        }
+
+        .nav {
+            margin-bottom: 15px;
+        }
+
+        .btn {
+            padding: 8px 14px;
+            border-radius: 8px;
+            text-decoration: none;
+            margin-right: 8px;
+            font-weight: 500;
+        }
+
+        .btn-home {
+            background: #1e293b;
+            color: white;
+        }
+
+        .btn-logs {
+            background: #22c55e;
+            color: black;
+        }
+
+        #logs {
+            background: #020617;
+            padding: 15px;
+            border-radius: 8px;
+            height: 80vh;
+            overflow-y: auto;
+            border: 1px solid #1e293b;
+        }
+
+        .log {
+            padding: 4px 0;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .INFO { color: #22c55e; }
+        .ERROR { color: #ef4444; }
+        .WARNING { color: #facc15; }
+    </style>
+</head>
+<body>
+
+<!-- ✅ NAVIGATION -->
+<div class="nav">
+    <a href="/" class="btn btn-home">🏠 Dashboard</a>
+    <a href="/logs/" class="btn btn-logs">📜 Logs</a>
+</div>
+
+<h2>📊 Live Logs</h2>
+
+<div id="logs"></div>
+
+<script>
+let page = 1;
+let loading = false;
+let seenLogs = new Set();
+
+// ----------------------------
+// ADD LOG LINE
+// ----------------------------
+function createLogDiv(line) {
+    const div = document.createElement("div");
+    div.className = "log";
+
+    if (line.includes("ERROR")) div.classList.add("ERROR");
+    else if (line.includes("WARNING")) div.classList.add("WARNING");
+    else div.classList.add("INFO");
+
+    div.textContent = line;
+    return div;
+}
+
+// ----------------------------
+// LOAD NEW LOGS (BOTTOM)
+// ----------------------------
+async function fetchNewLogs() {
+    try {
+        const res = await fetch(`/core/logs?page=1&limit=50`);
+        const data = await res.json();
+
+        const container = document.getElementById("logs");
+
+        data.data.reverse().forEach(line => {
+            if (!seenLogs.has(line)) {
+                seenLogs.add(line);
+                container.appendChild(createLogDiv(line));
+            }
+        });
+
+        container.scrollTop = container.scrollHeight;
+
+    } catch (err) {
+        console.error("Error fetching logs:", err);
+    }
+}
+
+// ----------------------------
+// LOAD OLD LOGS (TOP SCROLL)
+// ----------------------------
+async function loadOlderLogs() {
+    if (loading) return;
+    loading = true;
+
+    page++;
+
+    try {
+        const res = await fetch(`/core/logs?page=${page}&limit=50`);
+        const data = await res.json();
+
+        const container = document.getElementById("logs");
+
+        data.data.forEach(line => {
+            if (!seenLogs.has(line)) {
+                seenLogs.add(line);
+                const div = createLogDiv(line);
+                container.prepend(div);
+            }
+        });
+
+    } catch (err) {
+        console.error("Error loading older logs:", err);
+    }
+
+    loading = false;
+}
+
+// ----------------------------
+// SCROLL EVENT (TOP = LOAD OLD)
+// ----------------------------
+const container = document.getElementById("logs");
+
+container.addEventListener("scroll", () => {
+    if (container.scrollTop === 0) {
+        loadOlderLogs();
+    }
+});
+
+// ----------------------------
+// AUTO REFRESH (NEW LOGS)
+// ----------------------------
+setInterval(fetchNewLogs, 2000);
+
+// initial load
+fetchNewLogs();
+</script>
+
+</body>
+</html>
