@@ -4,6 +4,7 @@ from logging.handlers import RotatingFileHandler
 
 LOG_FILE = "logs/app.log"
 
+
 def get_logger(name="app_logger"):
     logger = logging.getLogger(name)
 
@@ -33,3 +34,7 @@ def get_logger(name="app_logger"):
     logger.addHandler(console_handler)
 
     return logger
+
+
+# ✅ ADD THIS LINE (IMPORTANT)
+logger = get_logger()
