@@ -1,5 +1,5 @@
 from core.utils import parse_message, generate_order_id, current_ist_time, should_ignore
-from core.db import orders_collection
+from core.db import get_orders_collection
 from core.telegram import send_telegram_alert
 from core.logger import get_logger
 
@@ -7,6 +7,8 @@ logger = get_logger("order_processor")
 
 
 def process_order(raw_message):
+    orders_collection = get_orders_collection()   # ✅ existing
+
     order_id = generate_order_id("ORD")
 
     metadata = {}
@@ -36,6 +38,23 @@ def process_order(raw_message):
 
         order_id = generate_order_id("IG" if ignored else "ORD")
 
+        # --------------------------------------------------
+        # ✅ NEW: DHAN EXECUTION (NON-BREAKING)
+        # --------------------------------------------------
+        dhan_response = None
+
+        if not ignored:
+            try:
+                from broker.services.order_manager import place_default_order
+                dhan_response = place_default_order()
+
+                logger.info(f"Dhan execution success: {dhan_response}")
+
+            except Exception as ex:
+                logger.error(f"Dhan execution failed: {ex}")
+                dhan_response = {"error": str(ex)}
+        # --------------------------------------------------
+
         # STEP 4
         failed_step = "prepare_doc"
         order_doc = {
@@ -47,7 +66,10 @@ def process_order(raw_message):
             "symbol": metadata.get("Symbol"),
             "alert_price": metadata.get("Price"),
             "created_at": current_ist_time(),
-            "metadata": metadata
+            "metadata": metadata,
+
+            # ✅ NEW FIELD (SAFE ADDITION)
+            "dhan_response": dhan_response
         }
 
         # STEP 5

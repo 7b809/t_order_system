@@ -1,5 +1,5 @@
 from django.http import JsonResponse
-from core.db import orders_collection
+from core.db import get_orders_collection
 from core.logger import get_logger
 
 logger = get_logger("orders_api")
@@ -7,6 +7,9 @@ logger = get_logger("orders_api")
 
 def get_orders(request):
     try:
+        # ✅ get collection (FIX)
+        orders_collection = get_orders_collection()
+
         # ✅ pagination params (safe parsing)
         page = int(request.GET.get("page", 1))
         limit = int(request.GET.get("limit", 10))
@@ -30,12 +33,20 @@ def get_orders(request):
         orders = []
         for o in cursor:
             o["_id"] = str(o["_id"])  # Mongo ObjectId → string
+
+            # ✅ safe JSON conversion (optional but recommended)
+            if "created_at" in o:
+                try:
+                    o["created_at"] = str(o["created_at"])
+                except:
+                    pass
+
             orders.append(o)
 
         # ✅ total count
         total = orders_collection.count_documents({})
 
-        # ✅ status counts (NEW 🔥)
+        # ✅ status counts
         placed_count = orders_collection.count_documents({"status": "PLACED"})
         ignored_count = orders_collection.count_documents({"status": "IGNORED"})
         failed_count = orders_collection.count_documents({"status": "FAILED"})
@@ -46,7 +57,7 @@ def get_orders(request):
             "total": total,
             "placed": placed_count,
             "ignored": ignored_count,
-            "failed": failed_count,   # optional (future UI use)
+            "failed": failed_count,
             "data": orders
         })
 

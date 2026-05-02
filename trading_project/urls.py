@@ -23,5 +23,5 @@ urlpatterns = [
     path("api/", include("orders.urls")),
     path("", include("dashboard.urls")),
     path("", include("core.urls")),   # logs
-    
+    path("broker/", include("broker.urls")),
 ]
