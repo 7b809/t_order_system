@@ -129,14 +129,26 @@ class DhanService:
             if error:
                 return error
 
-            # ---------- qty resolution ----------
-            if qty is None:
-                final_qty = self.get_default_qty(index)
-            else:
-                final_qty = qty
+            # ---------- qty ----------
+            final_qty = qty if qty else self.get_default_qty(index)
 
             # ---------- segment ----------
             exchange_segment = self.get_exchange_segment(index)
+
+            # --------------------------------
+            # 🔥 FIX: AMO LOGIC
+            # --------------------------------
+            order_type = "MARKET"
+
+            if amo:
+                order_type = "LIMIT"
+
+                # AMO MUST HAVE PRICE
+                if not price or price <= 0:
+                    return {
+                        "error": "INVALID_AMO",
+                        "message": "AMO requires LIMIT price > 0"
+                    }
 
             # ---------- payload ----------
             payload = {
@@ -145,7 +157,7 @@ class DhanService:
                 "transactionType": side,
                 "exchangeSegment": exchange_segment,
                 "productType": "INTRADAY",
-                "orderType": "MARKET",
+                "orderType": order_type,
                 "validity": "DAY",
                 "securityId": security_id,
                 "quantity": int(final_qty),
@@ -153,17 +165,17 @@ class DhanService:
                 "amoTime": amo_time if amo else ""
             }
 
-            # ✅ ONLY add price if valid (>0)
-            if price and price > 0:
+            # ---------- price handling ----------
+            if order_type == "LIMIT":
                 payload["price"] = float(price)
 
-            # ---------- DEBUG (optional but useful) ----------
+            # ---------- DEBUG ----------
             print("FINAL PAYLOAD →", payload)
 
             # ---------- API call ----------
             res = self.api.place_order(payload)
 
-            # ---------- validate response ----------
+            # ---------- validate ----------
             if not isinstance(res, dict):
                 return {"error": "Invalid response from broker", "raw": res}
 
