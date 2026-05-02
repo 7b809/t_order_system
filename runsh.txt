@@ -1,6 +1,6 @@
+git reset --hard
+git pull origin ws-order-feed
 chmod +x stop_app.sh start_app.sh
 
 python3 -m http.server 5000
 
-git reset --hard
-git pull origin ws-order-feed

@@ -28,7 +28,6 @@ def get_collection():
     global _collection
 
     if _collection is None:
-
         client = get_mongo_client()
 
         if client is None:
@@ -60,7 +59,7 @@ def save_token_to_mongo(data: dict):
             print("✅ Token saved to MongoDB")
 
     except Exception as e:
-        print(f"❌ Mongo save error: {e}")
+        logger.error(f"Mongo save error: {e}")
 
 
 # -----------------------------------
@@ -73,7 +72,7 @@ def fetch_token_from_mongo():
         data = collection.find_one({"_id": "dhan_token"})
 
         if not data:
-            print("❌ No token found in MongoDB")
+            logger.error("No token found in MongoDB")
             return None
 
         data.pop("_id", None)
@@ -84,7 +83,7 @@ def fetch_token_from_mongo():
         return data
 
     except Exception as e:
-        print(f"❌ Mongo fetch error: {e}")
+        logger.error(f"Mongo fetch error: {e}")
         return None
 
 
@@ -101,7 +100,7 @@ def delete_token_from_mongo():
             print("🗑️ Token deleted from MongoDB")
 
     except Exception as e:
-        print(f"❌ Mongo delete error: {e}")
+        logger.error(f"Mongo delete error: {e}")
 
 
 # -----------------------------------
@@ -111,7 +110,7 @@ def load_dhan_credentials():
     data = fetch_token_from_mongo()
 
     if not data:
-        print("❌ No token data found")
+        logger.error("No token data found")
         return None
 
     dhan_client_id = data.get("dhanClientId")
@@ -119,24 +118,33 @@ def load_dhan_credentials():
     expiry_time = data.get("expiryTime")
 
     if not dhan_client_id or not access_token or not expiry_time:
-        print("❌ Missing required token fields")
+        logger.error("Missing required token fields")
         return None
 
     try:
-        # ✅ Normalize timezone
+        if not expiry_time:
+            raise ValueError("Expiry is empty")
+
+        if not isinstance(expiry_time, str):
+            expiry_time = str(expiry_time)
+
+        expiry_time = expiry_time.strip()
+
+        # Fix Z format (common in APIs)
         if expiry_time.endswith("Z"):
             expiry_time = expiry_time.replace("Z", "+00:00")
 
         expiry_dt = datetime.fromisoformat(expiry_time)
 
+        # Ensure timezone aware
         if expiry_dt.tzinfo is None:
             expiry_dt = expiry_dt.replace(tzinfo=timezone.utc)
 
-    except Exception:
-        print("❌ Invalid expiry format")
+    except Exception as e:
+        logger.error(f"Invalid expiry format: {expiry_time} | Error: {e}")
         return None
 
-    # ✅ Safe debug
+    # ✅ Safe debug (unchanged)
     if BASIC_LOGS:
         masked_client = dhan_client_id[:4] + "****"
         masked_token = access_token[:6] + "******"
