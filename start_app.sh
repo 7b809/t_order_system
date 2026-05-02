@@ -31,7 +31,6 @@ else
     echo "⚠️ No log file found to send"
 fi
 
-
 # -----------------------------------
 # 🛑 Stop existing processes
 # -----------------------------------
@@ -49,14 +48,13 @@ if [ -f "$PID_FILE" ]; then
     rm -f $PID_FILE
 fi
 
-# Kill stray Django processes safely
-PIDS=$(pgrep -f "manage.py")
+# Safer: only kill runserver processes
+PIDS=$(pgrep -f "manage.py runserver")
 if [ ! -z "$PIDS" ]; then
     echo "🧹 Cleaning stray processes: $PIDS"
     echo "$PIDS" | xargs -r kill -9
     sleep 1
 fi
-
 
 # -----------------------------------
 # 🗂 Rotate logs
@@ -66,7 +64,6 @@ if [ -f "$LOG_FILE" ]; then
     mv "$LOG_FILE" "$LOG_DIR/logs_$TS.log"
     echo "🗂 Log rotated → logs_$TS.log"
 fi
-
 
 # -----------------------------------
 # 📥 Sync code
@@ -88,14 +85,14 @@ if [ "$LOCAL" != "$REMOTE" ]; then
 
         if [ -d "venv" ]; then
             source venv/bin/activate
-            pip install -r requirements.txt --no-cache-dir
+            pip install -r requirements.txt --upgrade-strategy only-if-needed
         else
-            pip3 install -r requirements.txt --upgrade-strategy only-if-needed        fi
+            pip3 install -r requirements.txt --upgrade-strategy only-if-needed
+        fi
     fi
 else
     echo "✅ Already up to date"
 fi
-
 
 # -----------------------------------
 # 🧱 Django migrations
@@ -109,7 +106,6 @@ fi
 
 $PYTHON_CMD manage.py migrate --noinput
 
-
 # -----------------------------------
 # 🚀 Start Django server
 # -----------------------------------
@@ -121,7 +117,6 @@ NEW_PID=$!
 echo $NEW_PID > $PID_FILE
 
 sleep 3
-
 
 # -----------------------------------
 # 🔍 Verify start
@@ -135,7 +130,6 @@ else
     exit 1
 fi
 
-
 # -----------------------------------
 # 📤 Send logs AFTER start (optional)
 # -----------------------------------
@@ -147,15 +141,10 @@ except Exception as e:
     print("Telegram notify failed:", e)
 EOF
 
-
 # -----------------------------------
 # 🔧 Ensure script permissions
 # -----------------------------------
 chmod +x start_app.sh stop_app.sh 2>/dev/null
 echo "🔧 Permissions ensured for start/stop scripts"
 
-
-
 echo "[$(date)] Deploy completed with PID $NEW_PID" >> $LOG_FILE
-
-
