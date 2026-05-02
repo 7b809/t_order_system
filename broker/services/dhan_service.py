@@ -1,5 +1,9 @@
 from .dhan_http import DhanHTTP
 import uuid
+import json
+from django.conf import settings
+
+DHAN_ERROR_MAP = settings.DHAN_ERROR_MAP
 
 
 class DhanService:
@@ -49,6 +53,46 @@ class DhanService:
         return None
 
     # --------------------------------
+    # 🔥 NEW: BROKER ERROR PARSER
+    # --------------------------------
+    def _parse_broker_error(self, res):
+        try:
+            # case: wrapped HTTP error
+            if isinstance(res, dict) and "response" in res:
+                inner = res.get("response")
+
+                if isinstance(inner, dict) and "message" in inner:
+                    try:
+                        msg_json = json.loads(inner["message"])
+                    except Exception:
+                        return res
+
+                    code = msg_json.get("errorCode")
+                    message = msg_json.get("errorMessage")
+
+                    return {
+                        "error": "BROKER_ERROR",
+                        "code": code,
+                        "message": message,
+                        "explanation": DHAN_ERROR_MAP.get(code, "Unknown error"),
+                        "raw": res
+                    }
+
+            # case: direct error
+            if isinstance(res, dict) and "errorCode" in res:
+                return {
+                    "error": "BROKER_ERROR",
+                    "code": res.get("errorCode"),
+                    "message": res.get("errorMessage"),
+                    "explanation": DHAN_ERROR_MAP.get(res.get("errorCode"))
+                }
+
+            return res
+
+        except Exception as e:
+            return {"error": "ERROR_PARSING_FAILED", "details": str(e)}
+
+    # --------------------------------
     # PLACE ORDER (SMART)
     # --------------------------------
     def place_order(
@@ -57,7 +101,9 @@ class DhanService:
         index="NIFTY",
         side="BUY",
         qty=None,
-        price=0
+        price=0,
+        amo=False,          # ✅ NEW
+        amo_time=""         # ✅ NEW
     ):
         try:
             # ---------- validation ----------
@@ -85,7 +131,11 @@ class DhanService:
                 "validity": "DAY",
                 "securityId": security_id,
                 "quantity": int(final_qty),
-                "price": float(price)  # ensure float
+                "price": float(price),
+
+                # ✅ NEW: AMO support
+                "afterMarketOrder": bool(amo),
+                "amoTime": amo_time if amo else ""
             }
 
             # ---------- API call ----------
@@ -96,7 +146,38 @@ class DhanService:
                 return {"error": "Invalid response from broker", "raw": res}
 
             if "orderId" not in res:
-                return {"error": "Order failed", "response": res}
+                parsed_error = self._parse_broker_error(res)
+
+                # 🔥 smart categorization (NO logic removed)
+                if isinstance(parsed_error, dict):
+                    code = parsed_error.get("code")
+
+                    if code == "DH-906":
+                        return {
+                            "error": "ORDER_REJECTED",
+                            "reason": parsed_error.get("message"),
+                            "hint": "Market closed or invalid order",
+                            "details": parsed_error
+                        }
+
+                    elif code == "DH-904":
+                        return {
+                            "error": "RATE_LIMIT",
+                            "hint": "Too many requests",
+                            "details": parsed_error
+                        }
+
+                    elif code == "DH-901":
+                        return {
+                            "error": "AUTH_ERROR",
+                            "hint": "Token expired or invalid",
+                            "details": parsed_error
+                        }
+
+                return {
+                    "error": "ORDER_FAILED",
+                    "details": parsed_error
+                }
 
             return res
 

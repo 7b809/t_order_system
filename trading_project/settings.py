@@ -49,6 +49,19 @@ AUTH_MONGO_COLLECTION = os.getenv('AUTH_MONGO_COLLECTION')
 TIME_ZONE = "Asia/Kolkata"
 USE_TZ = True
 
+DHAN_ERROR_MAP = {
+    "DH-901": "Invalid authentication (token expired or wrong)",
+    "DH-902": "API access not enabled for user",
+    "DH-903": "Account issue (segment not enabled or restriction)",
+    "DH-904": "Rate limit exceeded",
+    "DH-905": "Invalid input (missing/incorrect fields)",
+    "DH-906": "Order rejected (market closed or invalid order)",
+    "DH-907": "Data error (invalid parameters or no data)",
+    "DH-908": "Internal server error (broker side)",
+    "DH-909": "Network error",
+    "DH-910": "Unknown broker error",
+    "DH-911": "Invalid IP address"
+}
 
 # Application definition
 
