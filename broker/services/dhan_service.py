@@ -53,13 +53,10 @@ class DhanService:
         return None
 
     # --------------------------------
-    # 🔥 FIXED: BROKER ERROR PARSER
+    # 🔥 BROKER ERROR PARSER
     # --------------------------------
     def _parse_broker_error(self, res):
         try:
-            # -----------------------------
-            # CASE 1: HTTP_ERROR (your current issue)
-            # -----------------------------
             if isinstance(res, dict) and res.get("error") == "HTTP_ERROR":
                 msg = res.get("message")
 
@@ -80,9 +77,6 @@ class DhanService:
                     except Exception:
                         return res
 
-            # -----------------------------
-            # CASE 2: wrapped response
-            # -----------------------------
             if isinstance(res, dict) and "response" in res:
                 inner = res.get("response")
 
@@ -103,9 +97,6 @@ class DhanService:
                         "raw": res
                     }
 
-            # -----------------------------
-            # CASE 3: direct error
-            # -----------------------------
             if isinstance(res, dict) and "errorCode" in res:
                 return {
                     "error": "BROKER_ERROR",
@@ -158,10 +149,16 @@ class DhanService:
                 "validity": "DAY",
                 "securityId": security_id,
                 "quantity": int(final_qty),
-                "price": float(price) if price else 0,
                 "afterMarketOrder": bool(amo),
                 "amoTime": amo_time if amo else ""
             }
+
+            # ✅ ONLY add price if valid (>0)
+            if price and price > 0:
+                payload["price"] = float(price)
+
+            # ---------- DEBUG (optional but useful) ----------
+            print("FINAL PAYLOAD →", payload)
 
             # ---------- API call ----------
             res = self.api.place_order(payload)
