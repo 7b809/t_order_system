@@ -1,7 +1,7 @@
-from order_logic import parse_message, generate_order_id, current_ist_time, should_ignore
-from db import orders_collection
-from telegram_utils import send_telegram_alert
-from logger import get_logger
+from core.utils import parse_message, generate_order_id, current_ist_time, should_ignore
+from core.db import orders_collection
+from core.telegram import send_telegram_alert
+from core.logger import get_logger
 
 logger = get_logger("order_processor")
 
@@ -56,11 +56,11 @@ def process_order(raw_message):
 
         logger.info(f"Order stored: {order_id} | Status: {order_doc['status']}")
 
-        # ✅ SEND TELEGRAM FOR ALL CASES
+        # ✅ TELEGRAM
         try:
             send_telegram_alert({
                 "order_id": order_doc["order_id"],
-                "status": order_doc["status"],  # PLACED / IGNORED
+                "status": order_doc["status"],
                 "trade_type": order_doc["trade_type"],
                 "symbol": order_doc["symbol"],
                 "strike": order_doc["strike"],
@@ -92,7 +92,6 @@ def process_order(raw_message):
             orders_collection.insert_one(failed_order)
             logger.warning(f"FAILED order stored: {failed_order['order_id']}")
 
-            # 🔴 TELEGRAM FOR FAILED
             try:
                 send_telegram_alert({
                     "order_id": failed_order["order_id"],

@@ -1,5 +1,6 @@
 import requests
-from config import Config
+import requests
+from django.conf import settings
 
 
 def send_telegram_alert(order):
@@ -10,16 +11,49 @@ def send_telegram_alert(order):
     - Adds timeout + error protection
     """
 
-    if not Config.TELEGRAM_BOT_TOKEN or not Config.TELEGRAM_CHAT_ID:
+    # ✅ Load from Django settings
+    if not settings.TELEGRAM_BOT_TOKEN or not settings.TELEGRAM_CHAT_ID:
         return
 
     try:
         msg = format_message(order)
 
-        url = f"https://api.telegram.org/bot{Config.TELEGRAM_BOT_TOKEN}/sendMessage"
+        url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
 
         payload = {
-            "chat_id": Config.TELEGRAM_CHAT_ID,
+            "chat_id": settings.TELEGRAM_CHAT_ID,
+            "text": msg,
+            "parse_mode": "HTML"
+        }
+
+        # ✅ timeout added (important)
+        response = requests.post(url, json=payload, timeout=3)
+
+        if response.status_code != 200:
+            print("Telegram API error:", response.text)
+
+    except Exception as e:
+        # ❌ never crash main system
+        print("Telegram send error:", e)
+
+def send_telegram_alert(order):
+    """
+    Safe Telegram sender:
+    - Handles all statuses
+    - Never breaks main flow
+    - Adds timeout + error protection
+    """
+
+    if not settings.TELEGRAM_BOT_TOKEN or not settings.TELEGRAM_CHAT_ID:
+        return
+
+    try:
+        msg = format_message(order)
+
+        url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
+
+        payload = {
+            "chat_id": settings.TELEGRAM_CHAT_ID,
             "text": msg,
             "parse_mode": "HTML"
         }

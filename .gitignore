@@ -5,8 +5,9 @@ __pycache__/
 
 wv
 downloads
-
-
+logs
+db.sqlite3
+file.txt
 # C extensions
 *.so
 migrations

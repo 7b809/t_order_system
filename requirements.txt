@@ -1,9 +1,0 @@
-Flask
-pymongo
-python-dotenv
-pytz
-fastapi
-uvicorn
-dhanhq
-jinja2
-gunicorn
