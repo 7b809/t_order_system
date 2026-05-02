@@ -207,9 +207,38 @@ class DhanService:
                             "details": parsed_error
                         }
 
+                missing_fields = []
+
+                # 🔍 Manual validation (Dhan required fields)
+                if not self.api.client_id:
+                    missing_fields.append("dhanClientId")
+
+                if not security_id:
+                    missing_fields.append("securityId")
+
+                if not final_qty or final_qty <= 0:
+                    missing_fields.append("quantity")
+
+                if not side:
+                    missing_fields.append("transactionType")
+
+                if amo:
+                    if not price or price <= 0:
+                        missing_fields.append("price (required for AMO LIMIT)")
+                    if not amo_time:
+                        missing_fields.append("amoTime")
+
                 return {
                     "error": "ORDER_FAILED",
-                    "details": parsed_error
+                    "details": parsed_error,
+                    
+                    # 🔥 ADD THIS
+                    "debug": {
+                        "sent_payload": payload,
+                        "client_id": self.api.client_id,
+                        "missing_or_invalid_fields": missing_fields,
+                        "note": "Dhan does not specify exact missing field, this is best-effort validation"
+                    }
                 }
 
             return res
