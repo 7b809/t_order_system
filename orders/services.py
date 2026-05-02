@@ -1,9 +1,12 @@
 from core.utils import parse_message, generate_order_id, current_ist_time, should_ignore
-from core.db import orders_collection
+from core.db import get_orders_collection
 from core.telegram import send_telegram_alert
 from core.logger import get_logger
 
 logger = get_logger("order_processor")
+
+# ✅ initialize collection once
+orders_collection = get_orders_collection()
 
 
 def process_order(raw_message):
@@ -15,7 +18,7 @@ def process_order(raw_message):
     try:
         logger.info(f"Received alert: {raw_message}")
 
-        # STEP 1
+        # STEP 1: Parse message
         failed_step = "parse_message"
         metadata = parse_message(raw_message)
 
@@ -23,20 +26,20 @@ def process_order(raw_message):
         if not trade_type:
             raise ValueError("Missing Type in alert")
 
-        # STEP 2
+        # STEP 2: Fetch last placed order
         failed_step = "fetch_last_order"
         last_order = orders_collection.find_one(
             {"status": "PLACED"},
             sort=[("created_at", -1)]
         )
 
-        # STEP 3
+        # STEP 3: Ignore logic
         failed_step = "should_ignore"
         ignored = should_ignore(last_order, trade_type)
 
         order_id = generate_order_id("IG" if ignored else "ORD")
 
-        # STEP 4
+        # STEP 4: Prepare document
         failed_step = "prepare_doc"
         order_doc = {
             "order_id": order_id,
@@ -50,13 +53,13 @@ def process_order(raw_message):
             "metadata": metadata
         }
 
-        # STEP 5
+        # STEP 5: Save to DB
         failed_step = "db_insert"
         orders_collection.insert_one(order_doc)
 
         logger.info(f"Order stored: {order_id} | Status: {order_doc['status']}")
 
-        # ✅ TELEGRAM
+        # STEP 6: Telegram (non-blocking safe)
         try:
             send_telegram_alert({
                 "order_id": order_doc["order_id"],
@@ -92,6 +95,7 @@ def process_order(raw_message):
             orders_collection.insert_one(failed_order)
             logger.warning(f"FAILED order stored: {failed_order['order_id']}")
 
+            # Telegram for FAILED
             try:
                 send_telegram_alert({
                     "order_id": failed_order["order_id"],

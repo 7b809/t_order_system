@@ -53,10 +53,24 @@ Orders Dashboard
     background: #fef3c7;
     color: #92400e;
   }
+
+  .nav-btn {
+    border-radius: 10px;
+    font-weight: 500;
+  }
 </style>
-{% endblock %} {% block content %}
+{% endblock %}
+
+{% block content %}
 
 <div class="container-fluid">
+
+  <!-- NAVIGATION BUTTONS -->
+  <div class="d-flex gap-2 mb-4">
+    <a href="/" class="btn btn-dark nav-btn">🏠 Dashboard</a>
+    <a href="/logs/" class="btn btn-outline-success nav-btn">📜 Logs</a>
+  </div>
+
   <!-- HEADER -->
   <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="text-dark">📊 Orders Dashboard</h2>
@@ -113,9 +127,12 @@ Orders Dashboard
       <button class="btn btn-outline-primary" onclick="nextPage()">Next</button>
     </div>
   </div>
+
 </div>
 
-{% endblock %} {% block extra_js %}
+{% endblock %}
+
+{% block extra_js %}
 <script>
   let currentPage = 1;
   let limit = 10;
@@ -130,17 +147,14 @@ Orders Dashboard
 
     totalPages = Math.ceil(total / limit);
 
-    // ✅ summary from backend
     document.getElementById("total").innerText = total;
     document.getElementById("placed").innerText = data.placed;
     document.getElementById("ignored").innerText = data.ignored;
 
-    // table
     const tbody = document.getElementById("ordersTable");
     tbody.innerHTML = "";
 
     orders.forEach((o, i) => {
-      // ✅ status badge MUST be inside loop
       let statusBadge = "";
 
       if (o.status === "PLACED") {
@@ -152,18 +166,18 @@ Orders Dashboard
       }
 
       const row = `
-    <tr>
-        <td>${(currentPage - 1) * limit + i + 1}</td>
-        <td><span class="badge bg-secondary">${o.order_id}</span></td>
-        <td>${statusBadge}</td>
-        <td><span class="badge badge-soft-warning">${o.trade_type}</span></td>
-        <td>${o.symbol}</td>
-        <td>${o.strike}</td>
-        <td class="text-primary fw-bold">${o.strike_price}</td>
-        <td>${o.alert_price}</td>
-        <td><small>${o.created_at}</small></td>
-    </tr>
-    `;
+      <tr>
+          <td>${(currentPage - 1) * limit + i + 1}</td>
+          <td><span class="badge bg-secondary">${o.order_id}</span></td>
+          <td>${statusBadge}</td>
+          <td><span class="badge badge-soft-warning">${o.trade_type}</span></td>
+          <td>${o.symbol}</td>
+          <td>${o.strike}</td>
+          <td class="text-primary fw-bold">${o.strike_price}</td>
+          <td>${o.alert_price}</td>
+          <td><small>${o.created_at}</small></td>
+      </tr>
+      `;
 
       tbody.innerHTML += row;
     });
@@ -171,7 +185,6 @@ Orders Dashboard
     document.getElementById("pageInfo").innerText =
       `Page ${currentPage} / ${totalPages}`;
   }
-
 
   function nextPage() {
     if (currentPage < totalPages) {
@@ -187,10 +200,7 @@ Orders Dashboard
     }
   }
 
-  // 🔄 AUTO REFRESH
   setInterval(fetchOrders, 5000);
-
-  // first load
   fetchOrders();
 </script>
 {% endblock %}
