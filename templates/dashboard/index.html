@@ -5,7 +5,6 @@ Orders Dashboard
 {% endblock %}
 
 {% block extra_css %}
-
 <style>
   body {
     background: #f1f5f9;
@@ -69,6 +68,15 @@ Orders Dashboard
   <div class="d-flex gap-2 mb-4">
     <a href="/" class="btn btn-dark nav-btn">🏠 Dashboard</a>
     <a href="/logs/" class="btn btn-outline-success nav-btn">📜 Logs</a>
+
+    <button id="toggleBtn" class="btn btn-outline-primary nav-btn" onclick="toggleLiveOrders()">
+      📡 Live Orders
+    </button>
+
+    <!-- ✅ NEW FILTER BUTTONS -->
+    <button class="btn btn-outline-dark nav-btn" onclick="setSource('ALL')">📊 All</button>
+    <button class="btn btn-outline-success nav-btn" onclick="setSource('ALERT')">🧾 Alert</button>
+    <button class="btn btn-outline-secondary nav-btn" onclick="setSource('BROKER')">📡 Broker</button>
   </div>
 
   <!-- HEADER -->
@@ -120,7 +128,6 @@ Orders Dashboard
       </table>
     </div>
 
-    <!-- PAGINATION -->
     <div class="d-flex justify-content-between mt-3">
       <button class="btn btn-outline-primary" onclick="prevPage()">Prev</button>
       <span id="pageInfo"></span>
@@ -137,64 +144,116 @@ Orders Dashboard
   let currentPage = 1;
   let limit = 10;
   let totalPages = 1;
+  let showLive = false;
+
+  // ✅ NEW
+  let sourceFilter = "ALL";
+
+  function setSource(source) {
+    sourceFilter = source;
+    currentPage = 1;
+    fetchOrders();
+  }
+
+  function toggleLiveOrders() {
+    showLive = !showLive;
+
+    document.getElementById("toggleBtn").innerText =
+      showLive ? "📂 Show Saved Orders" : "📡 Live Orders";
+
+    fetchOrders();
+  }
 
   async function fetchOrders() {
-    const res = await fetch(`/api/orders?page=${currentPage}&limit=${limit}`);
+
+    let res;
+
+    if (showLive) {
+      res = await fetch(`/orders/`);
+    } else {
+      // ✅ ONLY CHANGE HERE
+      res = await fetch(`/api/orders?page=${currentPage}&limit=${limit}&source=${sourceFilter}`);
+    }
+
     const data = await res.json();
 
-    const orders = data.data;
-    const total = data.total;
+    const orders = showLive ? data : data.data;
 
-    totalPages = Math.ceil(total / limit);
-
-    document.getElementById("total").innerText = total;
-    document.getElementById("placed").innerText = data.placed;
-    document.getElementById("ignored").innerText = data.ignored;
+    if (!showLive) {
+      totalPages = Math.ceil(data.total / limit);
+      document.getElementById("total").innerText = data.total;
+      document.getElementById("placed").innerText = data.placed;
+      document.getElementById("ignored").innerText = data.ignored;
+    } else {
+      document.getElementById("total").innerText = orders.length;
+      document.getElementById("placed").innerText = "-";
+      document.getElementById("ignored").innerText = "-";
+    }
 
     const tbody = document.getElementById("ordersTable");
     tbody.innerHTML = "";
 
     orders.forEach((o, i) => {
-      let statusBadge = "";
 
-      if (o.status === "PLACED") {
-        statusBadge = '<span class="badge badge-soft-success">PLACED</span>';
-      } else if (o.status === "IGNORED") {
-        statusBadge = '<span class="badge badge-soft-warning">IGNORED</span>';
+      let row = "";
+
+      if (showLive) {
+        row = `
+        <tr>
+          <td>${i + 1}</td>
+          <td><span class="badge bg-dark">${o.orderId || "NA"}</span></td>
+          <td><span class="badge badge-soft-warning">${o.orderStatus}</span></td>
+          <td>${o.transactionType || "NA"}</td>
+          <td>${o.securityId || "NA"}</td>
+          <td>${o.drvStrikePrice || "NA"}</td>
+          <td class="text-primary fw-bold">${o.price || "NA"}</td>
+          <td>-</td>
+          <td><small>${o.createTime || "NA"}</small></td>
+        </tr>
+        `;
       } else {
-        statusBadge = '<span class="badge badge-soft-danger">FAILED</span>';
-      }
 
-      const row = `
-      <tr>
+        let statusBadge = "";
+
+        if (o.status === "PLACED") {
+          statusBadge = '<span class="badge badge-soft-success">PLACED</span>';
+        } else if (o.status === "IGNORED") {
+          statusBadge = '<span class="badge badge-soft-warning">IGNORED</span>';
+        } else {
+          statusBadge = '<span class="badge badge-soft-danger">FAILED</span>';
+        }
+
+        row = `
+        <tr>
           <td>${(currentPage - 1) * limit + i + 1}</td>
-          <td><span class="badge bg-secondary">${o.order_id}</span></td>
+          <td><span class="badge bg-secondary">${o.order_id || "NA"}</span></td>
           <td>${statusBadge}</td>
-          <td><span class="badge badge-soft-warning">${o.trade_type}</span></td>
-          <td>${o.symbol}</td>
-          <td>${o.strike}</td>
-          <td class="text-primary fw-bold">${o.strike_price}</td>
-          <td>${o.alert_price}</td>
-          <td><small>${o.created_at}</small></td>
-      </tr>
-      `;
+          <td><span class="badge badge-soft-warning">${o.trade_type || o.request_payload?.side || "NA"}</span></td>
+          <td>${o.symbol || o.request_payload?.security_id || "NA"}</td>
+          <td>${o.strike || "NA"}</td>
+          <td class="text-primary fw-bold">${o.strike_price || o.request_payload?.price || "NA"}</td>
+          <td>${o.alert_price || "NA"}</td>
+          <td><small>${o.created_at || "NA"}</small></td>
+        </tr>
+        `;
+      }
 
       tbody.innerHTML += row;
     });
 
     document.getElementById("pageInfo").innerText =
-      `Page ${currentPage} / ${totalPages}`;
+      showLive ? "Live View" : `Page ${currentPage} / ${totalPages}`;
   }
 
   function nextPage() {
-    if (currentPage < totalPages) {
+    if (!showLive && currentPage < totalPages) {
       currentPage++;
       fetchOrders();
     }
   }
 
   function prevPage() {
-    if (currentPage > 1) {
+    if (!showLive && currentPage > 1) {
       currentPage--;
       fetchOrders();
     }

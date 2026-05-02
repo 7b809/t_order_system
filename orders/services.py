@@ -44,6 +44,8 @@ def process_order(raw_message):
         order_doc = {
             "order_id": order_id,
             "status": "IGNORED" if ignored else "PLACED",
+            "source": "ALERT",   # ✅ ADD THIS
+
             "trade_type": trade_type,
             "strike": metadata.get("Strike"),
             "strike_price": metadata.get("StrikeLivePrice"),
@@ -83,6 +85,7 @@ def process_order(raw_message):
         failed_order = {
             "order_id": generate_order_id("FAIL"),
             "status": "FAILED",
+                "source": "ALERT",   # ✅ ADD THIS
             "error_reason": str(e),
             "error_type": type(e).__name__,
             "failed_step": failed_step,

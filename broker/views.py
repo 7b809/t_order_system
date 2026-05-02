@@ -1,5 +1,5 @@
 import logging
-import json
+import json, time
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -13,7 +13,7 @@ from .services.order_manager import (
     get_all_saved_orders,
     get_order_from_db,
     sync_order,
-    exit_order
+    exit_order,
 )
 
 # ✅ NEW IMPORTS (only addition)
@@ -82,7 +82,7 @@ def place_order_view(request):
             "qty": final_qty,
             "price": price,
             "amo": amo,
-            "amo_time": amo_time
+            "amo_time": amo_time,
         }
 
         logger.info(f"📤 Placing order: {request_payload}")
@@ -97,7 +97,7 @@ def place_order_view(request):
             qty=final_qty,
             price=price,
             amo=amo,
-            amo_time=amo_time
+            amo_time=amo_time,
         )
 
         # -------------------------------
@@ -106,6 +106,16 @@ def place_order_view(request):
         try:
             broker_status = "UNKNOWN"
 
+            # 🔥 NEW: generate safe order_id
+            order_id = None
+
+            if isinstance(res, dict):
+                order_id = res.get("orderId")
+
+            # fallback if broker didn't return id
+            if not order_id:
+                order_id = f"BRK_FAIL_{int(time.time())}"
+
             if res and isinstance(res, dict) and "orderId" in res:
                 broker_status = "EXECUTED"
             elif isinstance(res, dict) and res.get("error") == "ORDER_REJECTED":
@@ -113,14 +123,16 @@ def place_order_view(request):
             else:
                 broker_status = "ERROR"
 
-            orders_collection.insert_one({
-                "order_id": res.get("orderId") if isinstance(res, dict) else None,
-                "status": broker_status,
-                "source": "BROKER",
-                "request_payload": request_payload,
-                "broker_response": res,
-                "created_at": current_ist_time()
-            })
+            orders_collection.insert_one(
+                {
+                    "order_id": order_id,
+                    "status": broker_status,
+                    "source": "BROKER",
+                    "request_payload": request_payload,
+                    "broker_response": res,
+                    "created_at": current_ist_time(),
+                }
+            )
 
             logger.info(f"💾 Broker order saved | status={broker_status}")
 
@@ -133,8 +145,7 @@ def place_order_view(request):
         if not res or "orderId" not in res:
             logger.error(f"❌ Order placement failed: {res}")
             return JsonResponse(
-                {"error": "Order placement failed", "response": res},
-                status=500
+                {"error": "Order placement failed", "response": res}, status=500
             )
 
         save_order(res, {"index": index}, request_payload=request_payload)
