@@ -28,8 +28,12 @@ SECRET_KEY = 'django-insecure-cg=wsp_tw_&ewlr)1@9(+f2*q44^q2^egn%^2n&d(@084uf#^^
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
 
+ALLOWED_HOSTS = ["*"]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://sr-webhook.up.railway.app"
+]
 
 
 MONGO_URI = os.getenv('MONGO_URI')
