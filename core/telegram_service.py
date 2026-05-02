@@ -1,22 +1,29 @@
-import requests, os
-from config import Config
-from services.base_service import logger
-from datetime import datetime, timedelta
+import requests
+import os
+
+from django.conf import settings
+from django.utils import timezone
+
+from core.logger import logger
 
 
 MAX_FILE_SIZE = 45 * 1024 * 1024  # 45 MB
 
 
 def _get_ist_timestamp():
-    ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
-    return ist.strftime("%Y-%m-%d_%H-%M-%S")
+    """
+    Returns current time in IST using Django timezone settings
+    """
+    return timezone.localtime().strftime("%Y-%m-%d_%H-%M-%S")
+
 
 def send_telegram_message(message: str):
     try:
-        token = Config.TELEGRAM_BOT_TOKEN
-        chat_id = Config.TELEGRAM_CHAT_ID
+        token = getattr(settings, "TELEGRAM_BOT_TOKEN", None)
+        chat_id = getattr(settings, "TELEGRAM_CHAT_ID", None)
 
         if not token or not chat_id:
+            logger.warning("[TELEGRAM] Missing token or chat_id")
             return
 
         url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -27,7 +34,10 @@ def send_telegram_message(message: str):
             "parse_mode": "HTML"
         }
 
-        requests.post(url, json=payload, timeout=5)
+        response = requests.post(url, json=payload, timeout=5)
+
+        if response.status_code != 200:
+            logger.error(f"[TELEGRAM ERROR] {response.text}")
 
     except Exception as e:
         logger.error(f"[TELEGRAM ERROR] {e}")
@@ -35,10 +45,11 @@ def send_telegram_message(message: str):
 
 def send_telegram_file(file_path: str, caption: str = None):
     try:
-        token = Config.TELEGRAM_BOT_TOKEN
-        chat_id = Config.TELEGRAM_CHAT_ID
+        token = getattr(settings, "TELEGRAM_BOT_TOKEN", None)
+        chat_id = getattr(settings, "TELEGRAM_CHAT_ID", None)
 
         if not token or not chat_id:
+            logger.warning("[TELEGRAM FILE] Missing token or chat_id")
             return
 
         if not os.path.exists(file_path):
@@ -65,7 +76,10 @@ def send_telegram_file(file_path: str, caption: str = None):
                     "caption": caption or f"📄 Log file: {new_name}"
                 }
 
-                requests.post(url, data=data, files=files, timeout=30)
+                response = requests.post(url, data=data, files=files, timeout=30)
+
+                if response.status_code != 200:
+                    logger.error(f"[TELEGRAM FILE ERROR] {response.text}")
 
             return
 
@@ -92,7 +106,10 @@ def send_telegram_file(file_path: str, caption: str = None):
                     "caption": caption or f"📄 Log chunk {part}: {part_name}"
                 }
 
-                requests.post(url, data=data, files=files, timeout=60)
+                response = requests.post(url, data=data, files=files, timeout=60)
+
+                if response.status_code != 200:
+                    logger.error(f"[TELEGRAM FILE ERROR] {response.text}")
 
                 part += 1
 
