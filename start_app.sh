@@ -149,4 +149,14 @@ except Exception as e:
 EOF
 
 
+# -----------------------------------
+# 🔧 Ensure script permissions
+# -----------------------------------
+chmod +x start_app.sh stop_app.sh 2>/dev/null
+echo "🔧 Permissions ensured for start/stop scripts"
+
+
+
 echo "[$(date)] Deploy completed with PID $NEW_PID" >> $LOG_FILE
+
+
