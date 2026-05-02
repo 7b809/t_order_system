@@ -1,6 +1,8 @@
 #!/bin/bash
 
-APP_NAME="./logs/app.py"
+APP_ENTRY="manage.py"
+RUN_CMD="runserver 0.0.0.0:8000"
+
 LOG_DIR="./logs"
 LOG_FILE="$LOG_DIR/app.log"
 PID_FILE="$LOG_DIR/app.pid"
@@ -26,7 +28,6 @@ try:
 except Exception as e:
     print("Telegram send failed:", e)
 EOF
-
     sleep 2
 else
     echo "⚠️ No log file found to send"
@@ -34,11 +35,10 @@ fi
 
 
 # -----------------------------------
-# 🛑 Stop everything safely
+# 🛑 Stop existing processes
 # -----------------------------------
 echo "🛑 Stopping existing processes..."
 
-# Kill using PID file
 if [ -f "$PID_FILE" ]; then
     PID=$(cat $PID_FILE)
 
@@ -51,8 +51,7 @@ if [ -f "$PID_FILE" ]; then
     rm -f $PID_FILE
 fi
 
-# Kill stray processes safely
-PIDS=$(pgrep -f "$APP_NAME")
+PIDS=$(pgrep -f "$APP_ENTRY")
 if [ ! -z "$PIDS" ]; then
     echo "🧹 Cleaning stray processes: $PIDS"
     echo "$PIDS" | xargs -r kill -9
@@ -61,17 +60,16 @@ fi
 
 
 # -----------------------------------
-# 🗂 Rotate log AFTER sending
+# 🗂 Rotate logs
 # -----------------------------------
 if [ -f "$LOG_FILE" ]; then
     TS=$(date +"%Y-%m-%d_%H-%M-%S")
     mv "$LOG_FILE" "$LOG_DIR/logs_$TS.log"
-    echo "🗂 Log rotated → $LOG_DIR/logs_$TS.log"
 fi
 
 
 # -----------------------------------
-# 📥 Sync code (NO MERGE EVER)
+# 📥 Sync code
 # -----------------------------------
 echo "📥 Syncing code from GitHub..."
 
@@ -85,61 +83,55 @@ if [ "$LOCAL" != "$REMOTE" ]; then
     git reset --hard origin/$BRANCH
     git clean -fd
 
-    # -----------------------------------
-    # 📦 Install / Update dependencies
-    # -----------------------------------
     if [ -f "requirements.txt" ]; then
         echo "📦 Installing dependencies..."
 
-        # Use virtualenv if exists
         if [ -d "venv" ]; then
-            echo "🐍 Using existing virtualenv"
             source venv/bin/activate
             pip install -r requirements.txt --no-cache-dir
         else
-            echo "⚠️ No venv found, installing globally"
             pip3 install -r requirements.txt --no-cache-dir
         fi
-    else
-        echo "⚠️ requirements.txt not found, skipping dependency install"
     fi
-
 else
     echo "✅ Already up to date"
 fi
 
 
 # -----------------------------------
-# 🚀 Start app (stable mode)
+# 🧱 Django migrations (IMPORTANT)
 # -----------------------------------
-echo "🚀 Starting app..."
+echo "🧱 Running migrations..."
 
-# Choose python interpreter
 PYTHON_CMD="python3"
 if [ -f "venv/bin/python" ]; then
     PYTHON_CMD="venv/bin/python"
 fi
 
-nohup $PYTHON_CMD $APP_NAME > $LOG_FILE 2>&1 &
+$PYTHON_CMD manage.py migrate --noinput
+
+
+# -----------------------------------
+# 🚀 Start Django server
+# -----------------------------------
+echo "🚀 Starting Django app..."
+
+nohup $PYTHON_CMD $APP_ENTRY $RUN_CMD > $LOG_FILE 2>&1 &
 
 NEW_PID=$!
 echo $NEW_PID > $PID_FILE
 
-sleep 2
+sleep 3
 
 
 # -----------------------------------
 # 🔍 Verify start
 # -----------------------------------
 if ps -p $NEW_PID > /dev/null 2>&1; then
-    echo "✅ App started successfully"
+    echo "✅ Django app started successfully"
     echo "📌 PID: $NEW_PID"
-
-    chmod +x start_app.sh stop_app.sh 2>/dev/null
-    echo "🔧 Permissions updated for start/stop scripts"
-
 else
-    echo "❌ App failed to start"
+    echo "❌ Failed to start Django app"
     tail -n 20 $LOG_FILE
     exit 1
 fi

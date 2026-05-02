@@ -1,11 +1,11 @@
 #!/bin/bash
 
-APP_NAME="./logs/app.py"
+APP_ENTRY="manage.py"
 LOG_DIR="./logs"
 LOG_FILE="$LOG_DIR/app.log"
 PID_FILE="$LOG_DIR/app.pid"
 
-echo "🛑 Stopping application..."
+echo "🛑 Stopping Django application..."
 
 STOPPED=false
 
@@ -34,7 +34,7 @@ fi
 
 
 # -----------------------------------
-# 📌 Stop using PID file
+# 📌 Stop using PID file (PRIMARY)
 # -----------------------------------
 if [ -f "$PID_FILE" ]; then
     PID=$(cat $PID_FILE)
@@ -44,6 +44,8 @@ if [ -f "$PID_FILE" ]; then
         kill $PID
         sleep 2
         STOPPED=true
+    else
+        echo "⚠️ PID not running"
     fi
 
     rm -f $PID_FILE
@@ -51,12 +53,12 @@ fi
 
 
 # -----------------------------------
-# 🧹 Kill stray processes safely
+# 🧹 Kill stray Django processes
 # -----------------------------------
-PIDS=$(pgrep -f "$APP_NAME")
+PIDS=$(pgrep -f "$APP_ENTRY")
 
 if [ ! -z "$PIDS" ]; then
-    echo "🧹 Killing stray processes: $PIDS"
+    echo "🧹 Cleaning stray Django processes: $PIDS"
     echo "$PIDS" | xargs -r kill -9
     sleep 1
     STOPPED=true
@@ -64,12 +66,12 @@ fi
 
 
 # -----------------------------------
-# 📊 Final status
+# 📊 Final status check
 # -----------------------------------
-REMAINING=$(pgrep -f "$APP_NAME")
+REMAINING=$(pgrep -f "$APP_ENTRY")
 
 if [ -z "$REMAINING" ]; then
-    echo "✅ App fully stopped"
+    echo "✅ Django app fully stopped"
 else
     echo "❌ Some processes still running: $REMAINING"
 fi
@@ -81,5 +83,5 @@ fi
 if [ "$STOPPED" = true ]; then
     echo "📌 Stop operation completed"
 else
-    echo "⚠️ No running process found"
+    echo "⚠️ No running Django process found"
 fi
