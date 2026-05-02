@@ -90,8 +90,7 @@ if [ "$LOCAL" != "$REMOTE" ]; then
             source venv/bin/activate
             pip install -r requirements.txt --no-cache-dir
         else
-            pip3 install -r requirements.txt --no-cache-dir
-        fi
+            pip3 install -r requirements.txt --upgrade-strategy only-if-needed        fi
     fi
 else
     echo "✅ Already up to date"
