@@ -130,13 +130,33 @@ def load_dhan_credentials():
 
         expiry_time = expiry_time.strip()
 
-        # Fix Z format (common in APIs)
+        # Fix Z format
         if expiry_time.endswith("Z"):
             expiry_time = expiry_time.replace("Z", "+00:00")
 
+        # 🔥 Normalize fractional seconds safely
+        if "." in expiry_time:
+            # Split datetime and fractional+tz part
+            date_part, rest = expiry_time.split(".", 1)
+
+            # Detect timezone (+ or -)
+            tz = ""
+            if "+" in rest:
+                frac, tz = rest.split("+", 1)
+                tz = "+" + tz
+            elif "-" in rest:
+                frac, tz = rest.split("-", 1)
+                tz = "-" + tz
+            else:
+                frac = rest
+
+            # Pad microseconds to 6 digits
+            frac = (frac + "000000")[:6]
+
+            expiry_time = f"{date_part}.{frac}{tz}"
+
         expiry_dt = datetime.fromisoformat(expiry_time)
 
-        # Ensure timezone aware
         if expiry_dt.tzinfo is None:
             expiry_dt = expiry_dt.replace(tzinfo=timezone.utc)
 
