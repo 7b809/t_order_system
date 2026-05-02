@@ -158,8 +158,7 @@ class DhanService:
                 "validity": "DAY",
                 "securityId": security_id,
                 "quantity": int(final_qty),
-                "price": float(price),
-
+                "price": float(price) if price else 0,
                 "afterMarketOrder": bool(amo),
                 "amoTime": amo_time if amo else ""
             }
