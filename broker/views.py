@@ -16,9 +16,16 @@ from .services.order_manager import (
     exit_order
 )
 
+# ✅ NEW IMPORTS (only addition)
+from core.db import get_orders_collection
+from core.utils import current_ist_time
+
 logger = logging.getLogger(__name__)
 
 dhan = DhanService()
+
+# ✅ NEW (only addition)
+orders_collection = get_orders_collection()
 
 
 # -----------------------------------------
@@ -59,7 +66,6 @@ def place_order_view(request):
         qty = body.get("qty")
         price = body.get("price", 0)
 
-        # ✅ NEW (only addition — no logic change)
         amo = body.get("amo", False)
         amo_time = body.get("amo_time", "")
 
@@ -67,10 +73,8 @@ def place_order_view(request):
             logger.warning("⚠️ security_id missing")
             return JsonResponse({"error": "security_id required"}, status=400)
 
-        # resolve qty properly (IMPORTANT FIX)
         final_qty = qty if qty else dhan.get_default_qty(index)
 
-        # ✅ include AMO in debug payload (safe addition)
         request_payload = {
             "security_id": security_id,
             "index": index,
@@ -83,7 +87,9 @@ def place_order_view(request):
 
         logger.info(f"📤 Placing order: {request_payload}")
 
-        # ✅ ONLY CHANGE: pass amo + amo_time
+        # -------------------------------
+        # 🚀 CALL BROKER
+        # -------------------------------
         res = dhan.place_order(
             security_id=security_id,
             index=index,
@@ -94,6 +100,36 @@ def place_order_view(request):
             amo_time=amo_time
         )
 
+        # -------------------------------
+        # 🔥 NEW: SAVE BROKER RESULT
+        # -------------------------------
+        try:
+            broker_status = "UNKNOWN"
+
+            if res and isinstance(res, dict) and "orderId" in res:
+                broker_status = "EXECUTED"
+            elif isinstance(res, dict) and res.get("error") == "ORDER_REJECTED":
+                broker_status = "REJECTED"
+            else:
+                broker_status = "ERROR"
+
+            orders_collection.insert_one({
+                "order_id": res.get("orderId") if isinstance(res, dict) else None,
+                "status": broker_status,
+                "source": "BROKER",
+                "request_payload": request_payload,
+                "broker_response": res,
+                "created_at": current_ist_time()
+            })
+
+            logger.info(f"💾 Broker order saved | status={broker_status}")
+
+        except Exception as db_err:
+            logger.error(f"❌ Failed to save broker order: {db_err}", exc_info=True)
+
+        # -------------------------------
+        # EXISTING LOGIC (UNCHANGED)
+        # -------------------------------
         if not res or "orderId" not in res:
             logger.error(f"❌ Order placement failed: {res}")
             return JsonResponse(
@@ -110,7 +146,7 @@ def place_order_view(request):
     except Exception as e:
         logger.exception("❌ Exception in place_order_view")
         return JsonResponse({"error": str(e)}, status=500)
-    
+
 
 # -----------------------------------------
 # EXIT ORDER
