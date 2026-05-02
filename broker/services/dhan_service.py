@@ -53,11 +53,36 @@ class DhanService:
         return None
 
     # --------------------------------
-    # 🔥 NEW: BROKER ERROR PARSER
+    # 🔥 FIXED: BROKER ERROR PARSER
     # --------------------------------
     def _parse_broker_error(self, res):
         try:
-            # case: wrapped HTTP error
+            # -----------------------------
+            # CASE 1: HTTP_ERROR (your current issue)
+            # -----------------------------
+            if isinstance(res, dict) and res.get("error") == "HTTP_ERROR":
+                msg = res.get("message")
+
+                if isinstance(msg, str):
+                    try:
+                        msg_json = json.loads(msg)
+
+                        code = msg_json.get("errorCode")
+                        message = msg_json.get("errorMessage")
+
+                        return {
+                            "error": "BROKER_ERROR",
+                            "code": code,
+                            "message": message,
+                            "explanation": DHAN_ERROR_MAP.get(code, "Unknown error"),
+                            "raw": res
+                        }
+                    except Exception:
+                        return res
+
+            # -----------------------------
+            # CASE 2: wrapped response
+            # -----------------------------
             if isinstance(res, dict) and "response" in res:
                 inner = res.get("response")
 
@@ -78,7 +103,9 @@ class DhanService:
                         "raw": res
                     }
 
-            # case: direct error
+            # -----------------------------
+            # CASE 3: direct error
+            # -----------------------------
             if isinstance(res, dict) and "errorCode" in res:
                 return {
                     "error": "BROKER_ERROR",
@@ -102,8 +129,8 @@ class DhanService:
         side="BUY",
         qty=None,
         price=0,
-        amo=False,          # ✅ NEW
-        amo_time=""         # ✅ NEW
+        amo=False,
+        amo_time=""
     ):
         try:
             # ---------- validation ----------
@@ -133,7 +160,6 @@ class DhanService:
                 "quantity": int(final_qty),
                 "price": float(price),
 
-                # ✅ NEW: AMO support
                 "afterMarketOrder": bool(amo),
                 "amoTime": amo_time if amo else ""
             }
@@ -148,7 +174,6 @@ class DhanService:
             if "orderId" not in res:
                 parsed_error = self._parse_broker_error(res)
 
-                # 🔥 smart categorization (NO logic removed)
                 if isinstance(parsed_error, dict):
                     code = parsed_error.get("code")
 
