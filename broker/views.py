@@ -59,6 +59,10 @@ def place_order_view(request):
         qty = body.get("qty")
         price = body.get("price", 0)
 
+        # ✅ NEW (only addition — no logic change)
+        amo = body.get("amo", False)
+        amo_time = body.get("amo_time", "")
+
         if not security_id:
             logger.warning("⚠️ security_id missing")
             return JsonResponse({"error": "security_id required"}, status=400)
@@ -66,22 +70,28 @@ def place_order_view(request):
         # resolve qty properly (IMPORTANT FIX)
         final_qty = qty if qty else dhan.get_default_qty(index)
 
+        # ✅ include AMO in debug payload (safe addition)
         request_payload = {
             "security_id": security_id,
             "index": index,
             "side": side,
             "qty": final_qty,
-            "price": price
+            "price": price,
+            "amo": amo,
+            "amo_time": amo_time
         }
 
         logger.info(f"📤 Placing order: {request_payload}")
 
+        # ✅ ONLY CHANGE: pass amo + amo_time
         res = dhan.place_order(
             security_id=security_id,
             index=index,
             side=side,
             qty=final_qty,
-            price=price
+            price=price,
+            amo=amo,
+            amo_time=amo_time
         )
 
         if not res or "orderId" not in res:
@@ -100,7 +110,7 @@ def place_order_view(request):
     except Exception as e:
         logger.exception("❌ Exception in place_order_view")
         return JsonResponse({"error": str(e)}, status=500)
-
+    
 
 # -----------------------------------------
 # EXIT ORDER
