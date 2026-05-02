@@ -44,6 +44,12 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 AUTH_MONGO_DB = os.getenv('AUTH_MONGO_DB')
 AUTH_MONGO_COLLECTION = os.getenv('AUTH_MONGO_COLLECTION')
+
+# settings.py
+TIME_ZONE = "Asia/Kolkata"
+USE_TZ = True
+
+
 # Application definition
 
 INSTALLED_APPS = [

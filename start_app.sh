@@ -14,16 +14,14 @@ echo "🔄 Starting deployment..."
 mkdir -p $LOG_DIR
 
 # -----------------------------------
-# 📤 Send logs BEFORE stopping
+# 📤 Send logs BEFORE stopping (Django context)
 # -----------------------------------
 echo "📤 Sending logs to Telegram..."
 
 if [ -f "$LOG_FILE" ]; then
-    python3 - <<EOF
-import sys
-sys.path.append(".")
+    python3 manage.py shell <<EOF
 try:
-    from utils.telegram_service import send_telegram_file
+    from core.telegram_service import send_telegram_file
     send_telegram_file("$LOG_FILE", caption="🚀 PRE-RESTART LOGS")
 except Exception as e:
     print("Telegram send failed:", e)
@@ -51,7 +49,8 @@ if [ -f "$PID_FILE" ]; then
     rm -f $PID_FILE
 fi
 
-PIDS=$(pgrep -f "$APP_ENTRY")
+# Kill stray Django processes safely
+PIDS=$(pgrep -f "manage.py")
 if [ ! -z "$PIDS" ]; then
     echo "🧹 Cleaning stray processes: $PIDS"
     echo "$PIDS" | xargs -r kill -9
@@ -65,6 +64,7 @@ fi
 if [ -f "$LOG_FILE" ]; then
     TS=$(date +"%Y-%m-%d_%H-%M-%S")
     mv "$LOG_FILE" "$LOG_DIR/logs_$TS.log"
+    echo "🗂 Log rotated → logs_$TS.log"
 fi
 
 
@@ -99,7 +99,7 @@ fi
 
 
 # -----------------------------------
-# 🧱 Django migrations (IMPORTANT)
+# 🧱 Django migrations
 # -----------------------------------
 echo "🧱 Running migrations..."
 
@@ -135,6 +135,18 @@ else
     tail -n 20 $LOG_FILE
     exit 1
 fi
+
+
+# -----------------------------------
+# 📤 Send logs AFTER start (optional)
+# -----------------------------------
+python3 manage.py shell <<EOF
+try:
+    from core.telegram_service import send_telegram_message
+    send_telegram_message("✅ Django app deployed successfully 🚀")
+except Exception as e:
+    print("Telegram notify failed:", e)
+EOF
 
 
 echo "[$(date)] Deploy completed with PID $NEW_PID" >> $LOG_FILE

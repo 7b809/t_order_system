@@ -13,16 +13,14 @@ STOPPED=false
 mkdir -p $LOG_DIR
 
 # -----------------------------------
-# 📤 Send logs BEFORE stopping
+# 📤 Send logs BEFORE stopping (Django context)
 # -----------------------------------
 echo "📤 Sending logs to Telegram..."
 
 if [ -f "$LOG_FILE" ]; then
-    python3 - <<EOF
-import sys
-sys.path.append(".")
+    python3 manage.py shell <<EOF
 try:
-    from utils.telegram_service import send_telegram_file
+    from core.telegram_service import send_telegram_file
     send_telegram_file("$LOG_FILE", caption="🛑 Logs before STOP")
 except Exception as e:
     print("Telegram send failed:", e)
@@ -55,7 +53,7 @@ fi
 # -----------------------------------
 # 🧹 Kill stray Django processes
 # -----------------------------------
-PIDS=$(pgrep -f "$APP_ENTRY")
+PIDS=$(pgrep -f "manage.py")
 
 if [ ! -z "$PIDS" ]; then
     echo "🧹 Cleaning stray Django processes: $PIDS"
@@ -68,7 +66,7 @@ fi
 # -----------------------------------
 # 📊 Final status check
 # -----------------------------------
-REMAINING=$(pgrep -f "$APP_ENTRY")
+REMAINING=$(pgrep -f "manage.py")
 
 if [ -z "$REMAINING" ]; then
     echo "✅ Django app fully stopped"
